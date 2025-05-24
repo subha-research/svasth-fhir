@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15
+    container_name: fhir-postgres
+    environment:
+      POSTGRES_DB: ${DB_NAME:-fhir_db}
+      POSTGRES_USER: ${DB_USERNAME:-fhir_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-fhir_password}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=en_US.UTF-8"
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    restart: unless-stopped
+    networks:
+      - fhir-network
+
+  fhir-server:
+    build: 
+      context: ../
+      dockerfile: deployment/Dockerfile
+    container_name: fhir-server
+    environment:
+      - SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE:-r4}
+      - DB_URL=jdbc:postgresql://postgres:5432/${DB_NAME:-fhir_db}
+      - DB_USERNAME=${DB_USERNAME:-fhir_user}
+      - DB_PASSWORD=${DB_PASSWORD:-fhir_password}
+      - HOSPITAL_NAME=${HOSPITAL_NAME:-General Hospital}
+      - HOSPITAL_ID=${HOSPITAL_ID:-GH-001}
+      - HOSPITAL_TYPE=${HOSPITAL_TYPE:-both}
+      - EHR_ENABLED=${EHR_ENABLED:-true}
+      - BIOBANK_ENABLED=${BIOBANK_ENABLED:-true}
+    ports:
+      - "${SERVER_PORT:-8080}:8080"
+    depends_on:
+      - postgres
+    volumes:
+      - ./logs:/app/logs
+    restart: unless-stopped
+    networks:
+      - fhir-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/fhir/metadata"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  fhir-network:
+    driver: bridge

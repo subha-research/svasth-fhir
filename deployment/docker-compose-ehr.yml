@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15
+    container_name: fhir-ehr-postgres
+    environment:
+      POSTGRES_DB: ehr_fhir_db
+      POSTGRES_USER: fhir_user
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - ehr_postgres_data:/var/lib/postgresql/data
+
+  fhir-ehr:
+    build: 
+      context: ../
+      dockerfile: deployment/Dockerfile
+    container_name: fhir-ehr-server
+    environment:
+      - SPRING_PROFILES_ACTIVE=r4,ehr
+      - DB_URL=jdbc:postgresql://postgres:5432/ehr_fhir_db
+      - DB_USERNAME=fhir_user
+      - DB_PASSWORD=${DB_PASSWORD}
+      - HOSPITAL_NAME=${HOSPITAL_NAME:-General Hospital}
+      - HOSPITAL_ID=${HOSPITAL_ID:-GH-001}
+      - HOSPITAL_TYPE=ehr
+      - EHR_ENABLED=true
+      - BIOBANK_ENABLED=false
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+
+volumes:
+  ehr_postgres_data:
