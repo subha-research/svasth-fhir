@@ -1,0 +1,31 @@
+# src/main/resources/application-custom.yaml
+
+# Hospital Configuration
+hospital:
+  name: "${HOSPITAL_NAME:General Hospital}"
+  identifier: "${HOSPITAL_ID:GH-001}"
+  type: "${HOSPITAL_TYPE:both}"
+  timezone: "${HOSPITAL_TIMEZONE:UTC}"
+  locale: "${HOSPITAL_LOCALE:en_US}"
+
+# Module Configuration
+modules:
+  ehr:
+    enabled: "${EHR_ENABLED:true}"
+    patient-management: "${EHR_PATIENT_MGMT:true}"
+    clinical-workflows: "${EHR_CLINICAL:true}"
+  biobank:
+    enabled: "${BIOBANK_ENABLED:true}"
+    specimen-tracking: "${BIOBANK_SPECIMEN:true}"
+    storage-management: "${BIOBANK_STORAGE:true}"
+
+# Custom Provider Control
+custom:
+  providers:
+    enabled: "${CUSTOM_PROVIDERS_ENABLED:true}"
+
+# Override only specific HAPI settings if needed (Optional)
+hapi:
+  fhir:
+    server:
+      name: "${hospital.name} FHIR Platform"

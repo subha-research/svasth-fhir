@@ -1,0 +1,51 @@
+spring:
+  profiles:
+    active: test
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        jdbc:
+          lob:
+            non_contextual_creation: true
+        format_sql: false
+        show_sql: false
+    open-in-view: false
+
+hospital:
+  name: "Test Hospital"
+  identifier: "TEST-001"
+  type: "both"
+  timezone: "UTC"
+  locale: "en_US"
+
+modules:
+  ehr:
+    enabled: true
+    patient-management: true
+    clinical-workflows: true
+  biobank:
+    enabled: true
+    specimen-tracking: true
+    storage-management: true
+
+hapi:
+  fhir:
+    version: R4
+    server:
+      path: /fhir/*
+      name: "Test FHIR Server"
+    jpa:
+      enabled: true
+      scheduling_disabled: true
+      subscription_enabled: false
+
+logging:
+  level:
+    com.svasamm.fhir: DEBUG
+    ca.uhn.fhir: WARN
+    org.testcontainers: INFO
+    org.hibernate.SQL: WARN
+    ROOT: WARN

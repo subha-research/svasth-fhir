@@ -73,10 +73,10 @@ public class SpecimenResourceProvider implements IResourceProvider {
     public MethodOutcome updateLocation(
             @IdParam IdType theSpecimenId,
             @OperationParam(name = "location", min = 1) Reference location,
-            @OperationParam(name = "notes") StringType notes) {
+            @OperationParam(name = "notes") String notes) {
         
         return specimenService.updateLocation(theSpecimenId.getIdPart(), location, 
-                                            notes != null ? notes.getValue() : null);
+                                            notes != null ? notes : null);
     }
 
     @Operation(name = "$batch-update-location")
