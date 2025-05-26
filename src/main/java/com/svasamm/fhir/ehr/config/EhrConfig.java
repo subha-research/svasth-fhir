@@ -9,7 +9,7 @@ import org.springframework.context.annotation.Configuration;
 
 @Configuration
 @ConditionalOnProperty(name = "modules.ehr.enabled", havingValue = "true")
-@ComponentScan(basePackages = "com.yourcompany.fhir.ehr")
+@ComponentScan(basePackages = "com.svasamm.fhir.ehr")
 public class EhrConfig {
 
     @Bean

@@ -21,5 +21,7 @@ services:
       POSTGRES_PASSWORD: "admin"
     volumes:
       - hapi-fhir-postgres:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
 volumes:
   hapi-fhir-postgres:

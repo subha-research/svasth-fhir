@@ -1,5 +1,7 @@
 package com.svasamm.fhir.ehr.provider;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import ca.uhn.fhir.rest.annotation.*;
 import ca.uhn.fhir.rest.api.MethodOutcome;
 import ca.uhn.fhir.rest.param.*;
@@ -15,9 +17,12 @@ import java.util.Date;
 import java.util.List;
 import java.util.Random;
 
-@Component
 public class PatientResourceProvider implements IResourceProvider {
+    public PatientResourceProvider() {
+        logger.info("🚀 CUSTOM PatientResourceProvider CONSTRUCTOR CALLED 🚀");
+    }
 
+    private static final Logger logger = LoggerFactory.getLogger(PatientResourceProvider.class);
     @Autowired
     private PatientService patientService;
 
@@ -26,6 +31,7 @@ public class PatientResourceProvider implements IResourceProvider {
 
     @Override
     public Class<Patient> getResourceType() {
+        logger.info("CUSTOM PatientResourceProvider.getResourceType() called");
         return Patient.class;
     }
 
@@ -40,8 +46,26 @@ public class PatientResourceProvider implements IResourceProvider {
 
     @Create
     public MethodOutcome create(@ResourceParam Patient thePatient) {
-        enrichPatientForEHR(thePatient);
-        return patientService.createPatient(thePatient);
+        // logger.info("=== CUSTOM PatientResourceProvider.create() called ===");
+        logger.error("🔥🔥🔥 CUSTOM PatientResourceProvider.create() called - THIS SHOULD SHOW 🔥🔥🔥");
+        logger.error("Patient name: {}", thePatient.getName().isEmpty() ? "No name" : thePatient.getName().get(0).getFamily());
+        
+        // logger.("Patient name: {}", thePatient.getName().isEmpty() ? "No name" : thePatient.getName().get(0).getFamily());
+        // logger.info("Hospital config: {}", hospitalConfig.getName());
+
+        try {
+            enrichPatientForEHR(thePatient);
+            MethodOutcome result = patientService.createPatient(thePatient);
+            logger.error("🔥 Patient created with ID: {} 🔥", result.getId());
+            logger.info("Patient created successfully with ID: {}", result.getId());
+            return result;
+        } catch (Exception e) {
+            logger.error("🔥 Error in CUSTOM create: ", e);
+            logger.error("Error creating patient: ", e);
+            throw e;
+        }
+        // enrichPatientForEHR(thePatient);
+        // return patientService.createPatient(thePatient);
     }
 
     @Update

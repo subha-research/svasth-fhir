@@ -48,11 +48,11 @@ public class CustomFhirConfig {
         return new ValidationInterceptor();
     }
 
-    @Bean
-    public LoggingInterceptor customLoggingInterceptor() {
-        LoggingInterceptor interceptor = new LoggingInterceptor();
-        interceptor.setLoggerName("fhir.access");
-        interceptor.setMessageFormat("${requestVerb} ${requestUrl} - ${responseEncodingNoDefault} - ${idOrResourceName}");
-        return interceptor;
-    }
+    // @Bean
+    // public LoggingInterceptor customLoggingInterceptor() {
+    //     LoggingInterceptor interceptor = new LoggingInterceptor();
+    //     interceptor.setLoggerName("fhir.access");
+    //     interceptor.setMessageFormat("${requestVerb} ${requestUrl} - ${responseEncodingNoDefault} - ${idOrResourceName}");
+    //     return interceptor;
+    // }
 }

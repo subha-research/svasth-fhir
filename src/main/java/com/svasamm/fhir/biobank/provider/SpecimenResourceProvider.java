@@ -9,13 +9,10 @@ import com.svasamm.fhir.biobank.service.SpecimenService;
 import com.svasamm.fhir.config.HospitalConfig;
 import org.hl7.fhir.r4.model.*;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Component;
 
-import java.util.Date;
 import java.util.List;
 import java.util.Random;
 
-@Component
 public class SpecimenResourceProvider implements IResourceProvider {
 
     @Autowired
