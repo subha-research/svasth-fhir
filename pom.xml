@@ -395,19 +395,19 @@
         <!-- Test dependencies -->
 
         <!-- Testcontainers for PostgreSQL -->
-        <dependency>
+        <!-- <dependency>
             <groupId>org.testcontainers</groupId>
             <artifactId>junit-jupiter</artifactId>
             <scope>test</scope>
-        </dependency>
+        </dependency> -->
 
         <!-- HAPI FHIR Test Utilities -->
-        <dependency>
+        <!-- <dependency>
             <groupId>ca.uhn.hapi.fhir</groupId>
             <artifactId>hapi-fhir-test-utilities</artifactId>
             <version>7.0.2</version>
             <scope>test</scope>
-        </dependency>
+        </dependency> -->
 
         <dependency>
             <groupId>org.testcontainers</groupId>
@@ -602,7 +602,7 @@
                 </configuration>
             </plugin>
 
-            <!-- Plugins added by SVASAMM -->
+            <!-- Start :: Plugins added by SVASAMM -->
             <plugin>
                 <groupId>org.jacoco</groupId>
                 <artifactId>jacoco-maven-plugin</artifactId>
@@ -618,6 +618,49 @@
                         <phase>test</phase>
                         <goals>
                             <goal>report</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.1.2</version>
+                <configuration>
+                    <includes>
+                        <include>**/*Test.java</include>
+                    </includes>
+                    <excludes>
+                        <!-- Exclude your custom tests from regular surefire -->
+                        <exclude>**/com/svasamm/fhir/**/*Test.java</exclude>
+                    </excludes>
+                    <!-- Use hapi profile for HAPI's tests -->
+                    <systemPropertyVariables>
+                        <spring.profiles.active>test-hapi</spring.profiles.active>
+                    </systemPropertyVariables>
+                </configuration>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <version>3.1.2</version>
+                <configuration>
+                    <includes>
+                        <!-- Only include your custom tests -->
+                        <include>**/com/svasamm/fhir/**/*Test.java</include>
+                    </includes>
+                    <!-- Use custom profile for your tests -->
+                    <systemPropertyVariables>
+                        <spring.profiles.active>test-custom</spring.profiles.active>
+                    </systemPropertyVariables>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
                         </goals>
                     </execution>
                 </executions>

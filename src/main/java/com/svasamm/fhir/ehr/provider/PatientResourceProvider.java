@@ -49,7 +49,7 @@ public class PatientResourceProvider implements IResourceProvider {
         // logger.info("=== CUSTOM PatientResourceProvider.create() called ===");
         logger.error("🔥🔥🔥 CUSTOM PatientResourceProvider.create() called - THIS SHOULD SHOW 🔥🔥🔥");
         logger.error("Patient name: {}", thePatient.getName().isEmpty() ? "No name" : thePatient.getName().get(0).getFamily());
-        
+
         // logger.("Patient name: {}", thePatient.getName().isEmpty() ? "No name" : thePatient.getName().get(0).getFamily());
         // logger.info("Hospital config: {}", hospitalConfig.getName());
 
@@ -81,8 +81,8 @@ public class PatientResourceProvider implements IResourceProvider {
             @OptionalParam(name = Patient.SP_BIRTHDATE) DateParam theBirthDate,
             @OptionalParam(name = Patient.SP_ACTIVE) TokenParam theActive,
             @OptionalParam(name = "_count") NumberParam theCount) {
-        
-        return patientService.searchPatients(theFamily, theGiven, theIdentifier, 
+
+        return patientService.searchPatients(theFamily, theGiven, theIdentifier,
                                            theBirthDate, theActive, theCount);
     }
 
@@ -96,7 +96,7 @@ public class PatientResourceProvider implements IResourceProvider {
             @IdParam IdType thePatientId,
             @OperationParam(name = "start-date") DateParam startDate,
             @OperationParam(name = "end-date") DateParam endDate) {
-        
+
         return patientService.generatePatientChart(
             thePatientId.getIdPart(),
             startDate != null ? startDate.getValue() : null,
@@ -108,7 +108,7 @@ public class PatientResourceProvider implements IResourceProvider {
     public MethodOutcome mergePatients(
             @OperationParam(name = "source-patient", min = 1) IdType sourcePatient,
             @OperationParam(name = "target-patient", min = 1) IdType targetPatient) {
-        
+
         return patientService.mergePatients(sourcePatient.getIdPart(), targetPatient.getIdPart());
     }
 
@@ -116,7 +116,7 @@ public class PatientResourceProvider implements IResourceProvider {
         // Generate MRN if not present
         boolean hasMRN = patient.getIdentifier().stream()
             .anyMatch(id -> "MR".equals(id.getType().getCodingFirstRep().getCode()));
-        
+
         if (!hasMRN) {
             Identifier mrn = new Identifier();
             mrn.setSystem("urn:mrn:" + hospitalConfig.getIdentifier());
@@ -126,7 +126,7 @@ public class PatientResourceProvider implements IResourceProvider {
                 .setCode("MR")
                 .setDisplay("Medical Record Number");
             mrn.setUse(Identifier.IdentifierUse.USUAL);
-            
+
             patient.addIdentifier(mrn);
         }
 
@@ -158,7 +158,7 @@ public class PatientResourceProvider implements IResourceProvider {
     }
 
     private String generateMRN() {
-        return hospitalConfig.getIdentifier() + "-MRN-" + System.currentTimeMillis() + 
+        return hospitalConfig.getIdentifier() + "-MRN-" + System.currentTimeMillis() +
                String.format("%03d", new Random().nextInt(1000));
     }
 }

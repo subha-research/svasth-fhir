@@ -43,7 +43,7 @@ spring:
     baselineOnMigrate: true
     fail-on-missing-locations: false
   datasource:
-    url: 'jdbc:postgresql://db:5432/hapi'
+    url: 'jdbc:postgresql://localhost:5432/hapi'
     username: admin
     password: admin
     driverClassName: org.postgresql.Driver
@@ -51,8 +51,8 @@ spring:
     properties:
       hibernate.dialect: ca.uhn.fhir.jpa.model.dialect.HapiFhirPostgresDialect
       hibernate.search.enabled: false
-      
-  
+
+
     #url: 'jdbc:h2:file:./target/database/h2'
   #   url: jdbc:h2:mem:test_mem
   #   username: sa
@@ -166,7 +166,7 @@ hapi:
     #    server_address: http://hapi.fhir.org/baseR4
     #    defer_indexing_for_codesystems_of_size: 101
     ### Flag is true by default. This flag filters resources during package installation, allowing only those resources with a valid status (e.g. active) to be installed.
-    #    validate_resource_status_for_package_upload: false 
+    #    validate_resource_status_for_package_upload: false
     #    install_transitive_ig_dependencies: true
     #implementationguides:
     ###    example from registry (packages.fhir.org)
@@ -275,17 +275,17 @@ hapi:
 
     # comma-separated package names, will be @ComponentScan'ed by Spring to allow for creating custom Spring beans
     #custom-bean-packages:
-    
-    # comma-separated list of fully qualified interceptor classes. 
-    # classes listed here will be fetched from the Spring context when combined with 'custom-bean-packages', 
-    # or will be instantiated via reflection using an no-arg contructor; then registered with the server  
-    #custom-interceptor-classes:  
 
-    # comma-separated list of fully qualified provider classes. 
-    # classes listed here will be fetched from the Spring context when combined with 'custom-bean-packages', 
-    # or will be instantiated via reflection using an no-arg contructor; then registered with the server  
-    #custom-provider-classes:  
-    
+    # comma-separated list of fully qualified interceptor classes.
+    # classes listed here will be fetched from the Spring context when combined with 'custom-bean-packages',
+    # or will be instantiated via reflection using an no-arg contructor; then registered with the server
+    #custom-interceptor-classes:
+
+    # comma-separated list of fully qualified provider classes.
+    # classes listed here will be fetched from the Spring context when combined with 'custom-bean-packages',
+    # or will be instantiated via reflection using an no-arg contructor; then registered with the server
+    #custom-provider-classes:
+
     # Threadpool size for BATCH'ed GETs in a bundle.
     #    bundle_batch_pool_size: 10
     #    bundle_batch_pool_max_size: 50

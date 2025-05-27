@@ -4,12 +4,15 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.TestPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
-@SpringBootTest
-@ActiveProfiles("test")
+@SpringBootTest(classes = ca.uhn.fhir.jpa.starter.Application.class)
+@ActiveProfiles("test-custom")
+// @ActiveProfiles("test")
+@TestPropertySource(locations = "classpath:application-test-custom.yaml")
 @Testcontainers
 public abstract class BaseIntegrationTest {
 
