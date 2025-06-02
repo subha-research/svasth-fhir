@@ -1,10 +1,17 @@
 package com.svasamm.fhir.config;
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
+import org.springframework.stereotype.Component;
+
+import com.svasamm.fhir.interceptor.AuditInterceptor;
 
 @Configuration
+@Component
 @ConfigurationProperties(prefix = "modules")
+@Profile("!test")
 public class ModuleConfig {
     private EhrModule ehr = new EhrModule();
     private BiobankModule biobank = new BiobankModule();

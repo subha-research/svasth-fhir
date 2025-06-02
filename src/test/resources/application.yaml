@@ -26,6 +26,8 @@ management:
       export:
         enabled: true
 spring:
+  profiles:
+    active: test
   main:
     allow-circular-references: true
     allow-bean-definition-overriding: true

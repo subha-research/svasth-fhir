@@ -1,10 +1,19 @@
 package com.svasamm.fhir.config;
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
+import org.springframework.stereotype.Component;
 
+import com.svasamm.fhir.interceptor.AuditInterceptor;
+
+
+// @ConfigurationProperties(prefix = "hospital")
 @Configuration
+@Component
 @ConfigurationProperties(prefix = "hospital")
+@Profile("!test")
 public class HospitalConfig {
     private String name = "General Hospital";
     private String identifier = "GH-001";
@@ -18,25 +27,25 @@ public class HospitalConfig {
     // Getters and setters
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }
-    
+
     public String getIdentifier() { return identifier; }
     public void setIdentifier(String identifier) { this.identifier = identifier; }
-    
+
     public String getType() { return type; }
     public void setType(String type) { this.type = type; }
-    
+
     public String getTimezone() { return timezone; }
     public void setTimezone(String timezone) { this.timezone = timezone; }
-    
+
     public String getLocale() { return locale; }
     public void setLocale(String locale) { this.locale = locale; }
-    
+
     public String getAddress() { return address; }
     public void setAddress(String address) { this.address = address; }
-    
+
     public String getPhone() { return phone; }
     public void setPhone(String phone) { this.phone = phone; }
-    
+
     public String getEmail() { return email; }
     public void setEmail(String email) { this.email = email; }
 }

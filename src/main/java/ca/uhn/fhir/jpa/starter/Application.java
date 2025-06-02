@@ -26,10 +26,11 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Conditional;
 import org.springframework.context.annotation.Import;
 
-import com.svasamm.fhir.config.ResourceProviderBeans;
+import com.svasamm.fhir.config.CustomResourceProviderConfig;
+
+// import com.svasamm.fhir.config.CustomResourceProviderConfig;
 
 import org.springframework.context.annotation.ComponentScan;
-// import com.svasamm.fhir.config.ResourceProviderConfig;
 
 @ServletComponentScan(basePackageClasses = {RestfulServer.class})
 @SpringBootApplication(exclude = {ElasticsearchRestClientAutoConfiguration.class, ThymeleafAutoConfiguration.class})
@@ -45,7 +46,7 @@ import org.springframework.context.annotation.ComponentScan;
 	MdmConfig.class,
 	JpaBatch2Config.class,
 	Batch2JobsConfig.class,
-	ResourceProviderBeans.class
+	CustomResourceProviderConfig.class
 })
 public class Application extends SpringBootServletInitializer {
 

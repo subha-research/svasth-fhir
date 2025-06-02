@@ -6,14 +6,20 @@ import ca.uhn.fhir.rest.api.MethodOutcome;
 import ca.uhn.fhir.rest.param.*;
 import org.hl7.fhir.r4.model.*;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
 import java.util.stream.Collectors;
 
+
 @Service
 @Transactional
+@ConditionalOnClass(Specimen.class)
+@Profile("!test")
 public class SpecimenService {
 
     @Autowired
@@ -36,10 +42,10 @@ public class SpecimenService {
     public MethodOutcome createSpecimen(Specimen specimen) {
         // Add creation provenance
         addProvenanceRecord(specimen, "CREATE");
-        
+
         // Initialize storage tracking
         initializeStorageTracking(specimen);
-        
+
         return specimenDao.create(specimen);
     }
 
@@ -48,13 +54,13 @@ public class SpecimenService {
         if (existingSpecimen == null) {
             throw new RuntimeException("Specimen not found: " + specimenId);
         }
-        
+
         // Track changes for audit
         trackSpecimenChanges(existingSpecimen, specimen);
-        
+
         // Add update provenance
         addProvenanceRecord(specimen, "UPDATE");
-        
+
         specimen.setId(specimenId);
         return specimenDao.update(specimen);
     }
@@ -63,7 +69,7 @@ public class SpecimenService {
                                         TokenParam type, TokenParam status,
                                         DateRangeParam collected, NumberParam count) {
         SearchParameterMap searchMap = new SearchParameterMap();
-        
+
         if (subject != null) {
             searchMap.add(Specimen.SP_SUBJECT, subject);
         }
@@ -79,10 +85,10 @@ public class SpecimenService {
         if (collected != null) {
             searchMap.add(Specimen.SP_COLLECTED, collected);
         }
-        
+
         int searchCount = count != null ? count.getValue().intValue() : 50;
         searchMap.setCount(searchCount);
-        
+
         return specimenDao.search(searchMap)
             .getResources(0, searchCount)
             .stream()
@@ -100,21 +106,21 @@ public class SpecimenService {
         custody.setType(Bundle.BundleType.COLLECTION);
         custody.setId(UUID.randomUUID().toString());
         custody.setTimestamp(new Date());
-        
+
         // Add specimen
         custody.addEntry()
             .setResource(specimen)
             .setFullUrl("Specimen/" + specimenId);
-        
+
         // Get all provenance records for this specimen
         try {
             SearchParameterMap provenanceSearch = new SearchParameterMap();
             provenanceSearch.add("target", new ReferenceParam("Specimen/" + specimenId));
             provenanceSearch.add("_sort", new StringParam("recorded"));
-            
+
             // provenanceDao.search(provenanceSearch)
             //     .getAllResources()
-            //     .forEach(resource -> 
+            //     .forEach(resource ->
             //         custody.addEntry()
             //             .setResource(resource)
             //             .setFullUrl(resource.fhirType() + "/" + resource.getIdElement().getIdPart())
@@ -131,7 +137,7 @@ public class SpecimenService {
         } catch (Exception e) {
             // Log error but don't fail the operation
         }
-        
+
         return custody;
     }
 
@@ -140,12 +146,12 @@ public class SpecimenService {
         if (specimen == null) {
             return null;
         }
-        
+
         // Get current location from extension
         Extension locationExt = specimen.getExtensionByUrl(
             "http://hospital.local/fhir/StructureDefinition/current-location"
         );
-        
+
         if (locationExt != null) {
             if (locationExt.getValue() instanceof Reference) {
                 Reference locationRef = (Reference) locationExt.getValue();
@@ -162,7 +168,7 @@ public class SpecimenService {
                 return simpleLocation;
             }
         }
-        
+
         return null;
     }
 
@@ -171,19 +177,19 @@ public class SpecimenService {
         if (specimen == null) {
             throw new RuntimeException("Specimen not found: " + specimenId);
         }
-        
+
         // Update location extension
         // specimen.removeExtension("http://hospital.local/fhir/StructureDefinition/current-location");
         Extension existingExt = specimen.getExtensionByUrl("http://hospital.local/fhir/StructureDefinition/current-location");
         if (existingExt != null) {
         specimen.getExtension().remove(existingExt);
         }
-        
+
         Extension locationExt = new Extension();
         locationExt.setUrl("http://hospital.local/fhir/StructureDefinition/current-location");
         locationExt.setValue(newLocation);
         specimen.addExtension(locationExt);
-        
+
         // Add location change to storage history
         Extension storageExt = specimen.getExtensionByUrl("http://hospital.local/fhir/StructureDefinition/storage-history");
         if (storageExt == null) {
@@ -191,7 +197,7 @@ public class SpecimenService {
             storageExt.setUrl("http://hospital.local/fhir/StructureDefinition/storage-history");
             specimen.addExtension(storageExt);
         }
-        
+
         Extension storageEvent = storageExt.addExtension();
         storageEvent.setUrl("storage-event");
         storageEvent.addExtension("timestamp", new DateTimeType(new Date()));
@@ -200,10 +206,10 @@ public class SpecimenService {
         if (notes != null) {
             storageEvent.addExtension("notes", new StringType(notes));
         }
-        
+
         // Add location change provenance
         addLocationChangeProvenance(specimen, newLocation, notes);
-        
+
         return specimenDao.update(specimen);
     }
 
@@ -212,17 +218,17 @@ public class SpecimenService {
         result.setType(Bundle.BundleType.BATCHRESPONSE);
         result.setId(UUID.randomUUID().toString());
         result.setTimestamp(new Date());
-        
+
         for (IdType specimenId : specimenIds) {
             try {
                 updateLocation(specimenId.getIdPart(), location, "Batch location update");
-                
+
                 Bundle.BundleEntryComponent entry = result.addEntry();
                 entry.setResponse(new Bundle.BundleEntryResponseComponent())
                     .getResponse()
                     .setStatus("200")
                     .setLocation("Specimen/" + specimenId.getIdPart());
-                    
+
             } catch (Exception e) {
                 Bundle.BundleEntryComponent entry = result.addEntry();
                 entry.setResponse(new Bundle.BundleEntryResponseComponent())
@@ -231,7 +237,7 @@ public class SpecimenService {
                     .setOutcome(createOperationOutcome("Error updating specimen: " + e.getMessage()));
             }
         }
-        
+
         return result;
     }
 
@@ -241,7 +247,7 @@ public class SpecimenService {
             provenance.setId(UUID.randomUUID().toString());
             provenance.addTarget(new Reference("Specimen/" + specimen.getIdElement().getIdPart()));
             provenance.setRecorded(new Date());
-            
+
             // Add activity
             CodeableConcept activityCode = new CodeableConcept();
             activityCode.addCoding()
@@ -249,7 +255,7 @@ public class SpecimenService {
                 .setCode(activity)
                 .setDisplay(activity.toLowerCase());
             provenance.setActivity(activityCode);
-            
+
             // Add agent
             // Provenance.ProvenanceAgentComponent agent = provenance.addAgent();
             // agent.setType(new CodeableConcept()
@@ -267,7 +273,7 @@ public class SpecimenService {
                 .setDisplay("Author");
             agent.setType(agentType);
             agent.setWho(new Reference().setDisplay("Biobank System"));
-            
+
             provenanceDao.create(provenance);
         } catch (Exception e) {
             // Log error but don't fail the main operation
@@ -279,33 +285,33 @@ public class SpecimenService {
     private void initializeStorageTracking(Specimen specimen) {
         Extension storageExt = new Extension();
         storageExt.setUrl("http://hospital.local/fhir/StructureDefinition/storage-history");
-        
+
         Extension initialStorage = storageExt.addExtension();
         initialStorage.setUrl("storage-event");
         initialStorage.addExtension("timestamp", new DateTimeType(new Date()));
         initialStorage.addExtension("action", new StringType("received"));
         initialStorage.addExtension("location", new StringType("Receiving Area"));
-        
+
         specimen.addExtension(storageExt);
     }
 
     private void trackSpecimenChanges(Specimen existing, Specimen updated) {
         List<String> changes = new ArrayList<>();
-        
+
         if (!Objects.equals(existing.getStatus(), updated.getStatus())) {
             changes.add("Status changed from " + existing.getStatus() + " to " + updated.getStatus());
         }
-        
+
         if (!Objects.equals(existing.getType(), updated.getType())) {
             changes.add("Type changed");
         }
-        
+
         if (!changes.isEmpty()) {
             Extension changeExt = new Extension();
             changeExt.setUrl("http://hospital.local/fhir/StructureDefinition/change-log");
             changeExt.addExtension("timestamp", new DateTimeType(new Date()));
             changeExt.addExtension("changes", new StringType(String.join("; ", changes)));
-            
+
             updated.addExtension(changeExt);
         }
     }
@@ -316,7 +322,7 @@ public class SpecimenService {
             provenance.setId(UUID.randomUUID().toString());
             provenance.addTarget(new Reference("Specimen/" + specimen.getIdElement().getIdPart()));
             provenance.setRecorded(new Date());
-            
+
             // Add location change activity
             CodeableConcept activityCode = new CodeableConcept();
             activityCode.addCoding()
@@ -324,7 +330,7 @@ public class SpecimenService {
                 .setCode("LOCATION_CHANGE")
                 .setDisplay("Location Change");
             provenance.setActivity(activityCode);
-            
+
             // Add location details
             Extension locationExt = new Extension();
             locationExt.setUrl("http://hospital.local/fhir/StructureDefinition/location-change");
@@ -333,7 +339,7 @@ public class SpecimenService {
                 locationExt.addExtension("notes", new StringType(notes));
             }
             provenance.addExtension(locationExt);
-            
+
             // Add agent
             // Provenance.ProvenanceAgentComponent agent = provenance.addAgent();
             // agent.setType(new CodeableConcept()
@@ -351,7 +357,7 @@ public class SpecimenService {
                 .setDisplay("Author");
             agent.setType(agentType);
             agent.setWho(new Reference().setDisplay("Biobank System"));
-            
+
             provenanceDao.create(provenance);
         } catch (Exception e) {
             // Log error but don't fail the main operation
