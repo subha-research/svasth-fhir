@@ -62,26 +62,140 @@ public class JwtValidationInterceptor {
     }
     
     private boolean isValidJwtToken(String token) {
-        try {
-            // Basic JWT format validation
-            String[] parts = token.split("\\.");
-            if (parts.length != 3) {
-                logger.debug("JWT token does not have 3 parts");
-                return false;
-            }
-            
-            // Try to decode payload to verify it's valid Base64
-            Base64.getUrlDecoder().decode(parts[1]);
-            
-            logger.debug("JWT token format is valid");
-            return true;
-            
-        } catch (IllegalArgumentException e) {
-            logger.debug("JWT token Base64 decoding failed: {}", e.getMessage());
-            return false;
-        } catch (Exception e) {
-            logger.debug("JWT token validation failed: {}", e.getMessage());
+    try {
+        // Basic JWT format validation
+        String[] parts = token.split("\\.");
+        if (parts.length != 3) {
+            logger.debug("JWT token does not have 3 parts, got: {}", parts.length);
             return false;
         }
+        
+        // Validate each part is not empty
+        for (int i = 0; i < parts.length; i++) {
+            if (parts[i] == null || parts[i].trim().isEmpty()) {
+                logger.debug("JWT token part {} is empty", i);
+                return false;
+            }
+        }
+        
+        // Validate header (first part)
+        if (!isValidJwtPart(parts[0], "header")) {
+            return false;
+        }
+        
+        // Validate payload (second part) 
+        if (!isValidJwtPart(parts[1], "payload")) {
+            return false;
+        }
+        
+        // Validate signature format (third part)
+        if (!isValidSignaturePart(parts[2])) {
+            return false;
+        }
+        
+        // Validate header contains required JWT fields
+        if (!validateJwtHeader(parts[0])) {
+            return false;
+        }
+        
+        // Validate payload contains required claims
+        if (!validateJwtPayload(parts[1])) {
+            return false;
+        }
+        
+        logger.debug("JWT token format is valid");
+        return true;
+        
+    } catch (IllegalArgumentException e) {
+        logger.debug("JWT token Base64 decoding failed: {}", e.getMessage());
+        return false;
+    } catch (Exception e) {
+        logger.debug("JWT token validation failed: {}", e.getMessage());
+        return false;
     }
+	}
+
+private boolean isValidJwtPart(String part, String partName) {
+    try {
+        // Check if it's valid Base64
+        byte[] decoded = Base64.getUrlDecoder().decode(part);
+        String decodedStr = new String(decoded);
+        
+        // Must be valid JSON (starts with { and ends with })
+        if (!decodedStr.trim().startsWith("{") || !decodedStr.trim().endsWith("}")) {
+            logger.debug("JWT {} is not valid JSON format", partName);
+            return false;
+        }
+        
+        return true;
+    } catch (IllegalArgumentException e) {
+        logger.debug("JWT {} is not valid Base64: {}", partName, e.getMessage());
+        return false;
+    } catch (Exception e) {
+        logger.debug("JWT {} validation failed: {}", partName, e.getMessage());
+        return false;
+    }
+}
+
+private boolean isValidSignaturePart(String signature) {
+    // Signature should not be just numbers or simple text
+    if (signature.matches("^[0-9.]+$")) {
+        logger.debug("JWT signature appears to be just numbers: {}", signature);
+        return false;
+    }
+    
+    // Signature should have minimum length
+    if (signature.length() < 10) {
+        logger.debug("JWT signature too short: {}", signature.length());
+        return false;
+    }
+    
+    return true;
+}
+
+private boolean validateJwtHeader(String headerPart) {
+    try {
+        String headerJson = new String(Base64.getUrlDecoder().decode(headerPart));
+        
+        // Must contain "alg" field
+        if (!headerJson.contains("\"alg\"")) {
+            logger.debug("JWT header missing 'alg' field");
+            return false;
+        }
+        
+        // Must contain "typ" field with value "JWT"
+        if (!headerJson.contains("\"typ\"") || !headerJson.contains("\"JWT\"")) {
+            logger.debug("JWT header missing 'typ' field or not JWT type");
+            return false;
+        }
+        
+        return true;
+    } catch (Exception e) {
+        logger.debug("JWT header validation failed: {}", e.getMessage());
+        return false;
+    }
+}
+
+	 private boolean validateJwtPayload(String payloadPart) {
+	     try {
+	         String payloadJson = new String(Base64.getUrlDecoder().decode(payloadPart));
+		 
+	         // Must contain at least "sub" (subject) claim
+	         if (!payloadJson.contains("\"sub\"")) {
+	             logger.debug("JWT payload missing 'sub' claim");
+	             return false;
+	         }
+		   
+	         // Should contain "iat" (issued at) or "exp" (expiration)
+	         if (!payloadJson.contains("\"iat\"") && !payloadJson.contains("\"exp\"")) {
+	             logger.debug("JWT payload missing time claims (iat/exp)");
+	             return false;
+	         }
+		   
+	         return true;
+	     } catch (Exception e) {
+	         logger.debug("JWT payload validation failed: {}", e.getMessage());
+	         return false;
+	     }
+	 }
 }
