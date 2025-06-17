@@ -7,7 +7,9 @@ import ca.uhn.fhir.rest.server.RestfulServer;
 import com.svasamm.fhir.ehr.provider.PatientResourceProvider;
 import com.svasamm.fhir.ehr.provider.PractitionerResourceProvider;
 import com.svasamm.fhir.biobank.provider.SpecimenResourceProvider;
+import com.svasamm.fhir.ehr.provider.MedicationResourceProvider;
 import org.hl7.fhir.r4.model.Patient;
+import org.hl7.fhir.r4.model.Medication;
 import org.hl7.fhir.r4.model.Practitioner;
 import org.hl7.fhir.r4.model.Specimen;
 import org.slf4j.Logger;
@@ -31,168 +33,196 @@ import java.util.List;
  * Only active when NOT in test profile and when R4 classes are available
  */
 @Configuration
-@ConditionalOnClass({Patient.class, Specimen.class, Practitioner.class})
+@ConditionalOnClass({ Patient.class, Specimen.class, Practitioner.class, Medication.class })
 @ConditionalOnProperty(name = "hapi.fhir.fhir_version", havingValue = "R4", matchIfMissing = true)
-@Profile("!test")  // Exclude from test profile
+@Profile("!test") // Exclude from test profile
 public class CustomResourceProviderConfig implements ApplicationListener<ApplicationReadyEvent> {
 
-    private static final Logger logger = LoggerFactory.getLogger(CustomResourceProviderConfig.class);
+	private static final Logger logger = LoggerFactory.getLogger(CustomResourceProviderConfig.class);
 
-    @Autowired(required = false)
-    private IFhirResourceDao<Patient> patientDao;
+	@Autowired(required = false)
+	private IFhirResourceDao<Patient> patientDao;
 
-    @Autowired(required = false)
-    private IFhirResourceDao<Specimen> specimenDao;
+	@Autowired(required = false)
+	private IFhirResourceDao<Medication> medicationDao;
 
-    @Autowired(required = false)
-    private IFhirResourceDao<Practitioner> practitionerDao;
+	@Autowired(required = false)
+	private IFhirResourceDao<Specimen> specimenDao;
 
-    @Autowired(required = false)
-    private RestfulServer restfulServer;
+	@Autowired(required = false)
+	private IFhirResourceDao<Practitioner> practitionerDao;
 
-    // Inject the Spring beans that we created
-    @Autowired(required = false)
-    @Qualifier("patientResourceProvider")
-    private BaseJpaResourceProvider<Patient> customPatientProvider;
+	@Autowired(required = false)
+	private RestfulServer restfulServer;
 
-    @Autowired(required = false)
-    @Qualifier("specimenResourceProvider")
-    private BaseJpaResourceProvider<Specimen> customSpecimenProvider;
+	// Inject the Spring beans that we created
+	@Autowired(required = false)
+	@Qualifier("patientResourceProvider")
+	private BaseJpaResourceProvider<Patient> customPatientProvider;
 
-    @Autowired(required = false)
-    @Qualifier("practitionerResourceProvider")
-    private BaseJpaResourceProvider<Practitioner> customPractitionerProvider;
+	@Autowired(required = false)
+	@Qualifier("medicationResourceProvider")
+	private BaseJpaResourceProvider<Medication> customMedicationProvider;
 
-    private boolean providersRegistered = false;
+	@Autowired(required = false)
+	@Qualifier("specimenResourceProvider")
+	private BaseJpaResourceProvider<Specimen> customSpecimenProvider;
 
-    /**
-     * Custom Patient Resource Provider Bean
-     */
-    @Bean(name = "patientResourceProvider")
-    @Primary
-    @ConditionalOnClass(Patient.class)
-    public BaseJpaResourceProvider<Patient> patientResourceProvider() {
-        if (patientDao == null) {
-            logger.warn("PatientDao not available, skipping custom provider creation");
-            return null;
-        }
-        logger.info("🏥 Creating PRIMARY Custom PatientResourceProvider Bean with JPA DAO");
-        return new PatientResourceProvider(patientDao);
-    }
+	@Autowired(required = false)
+	@Qualifier("practitionerResourceProvider")
+	private BaseJpaResourceProvider<Practitioner> customPractitionerProvider;
 
-    /**
-     * Custom Specimen Resource Provider Bean
-     */
-    @Bean(name = "specimenResourceProvider")
-    @Primary
-    @ConditionalOnClass(Specimen.class)
-    public BaseJpaResourceProvider<Specimen> specimenResourceProvider() {
-        if (specimenDao == null) {
-            logger.warn("SpecimenDao not available, skipping custom provider creation");
-            return null;
-        }
-        logger.info("🔬 Creating PRIMARY Custom SpecimenResourceProvider Bean with JPA DAO");
-        return new SpecimenResourceProvider(specimenDao);
-    }
+	private boolean providersRegistered = false;
 
-    /**
-     * Custom Practitioner Resource Provider Bean
-     */
-    @Bean(name = "practitionerResourceProvider")
-    @Primary
-    @ConditionalOnClass(Practitioner.class)
-    public BaseJpaResourceProvider<Practitioner> practitionerResourceProvider() {
-        if (practitionerDao == null) {
-            logger.warn("PractitionerDao not available, skipping custom provider creation");
-            return null;
-        }
-        logger.info("👨‍⚕️ Creating PRIMARY Custom PractitionerResourceProvider Bean with JPA DAO");
-        return new PractitionerResourceProvider(practitionerDao);
-    }
+	/**
+	 * Custom Patient Resource Provider Bean
+	 */
+	@Bean(name = "patientResourceProvider")
+	@Primary
+	@ConditionalOnClass(Patient.class)
+	public BaseJpaResourceProvider<Patient> patientResourceProvider() {
+		if (patientDao == null) {
+			logger.warn("PatientDao not available, skipping custom provider creation");
+			return null;
+		}
+		logger.info("🏥 Creating PRIMARY Custom PatientResourceProvider Bean with JPA DAO");
+		return new PatientResourceProvider(patientDao);
+	}
 
-    @Override
-    public void onApplicationEvent(ApplicationReadyEvent event) {
-        // Skip if not R4 or dependencies not available
-        if (providersRegistered || restfulServer == null || patientDao == null) {
-            return;
-        }
+	@Bean(name = "medicationResourceProvider")
+	@Primary
+	@ConditionalOnClass(Medication.class)
+	public BaseJpaResourceProvider<Medication> medicationResourceProvider() {
+		if (medicationDao == null) {
+			logger.warn("MedicationDao not available, skipping custom provider creation");
+			return null;
+		}
+		logger.info("💊 Creating PRIMARY Custom MedicationResourceProvider Bean with JPA DAO");
+		return new MedicationResourceProvider(medicationDao);
+	}
 
-        logger.info("🚀 APPLICATION READY - ENSURING CUSTOM PROVIDERS ARE ACTIVE 🚀");
+	/**
+	 * Custom Specimen Resource Provider Bean
+	 */
+	@Bean(name = "specimenResourceProvider")
+	@Primary
+	@ConditionalOnClass(Specimen.class)
+	public BaseJpaResourceProvider<Specimen> specimenResourceProvider() {
+		if (specimenDao == null) {
+			logger.warn("SpecimenDao not available, skipping custom provider creation");
+			return null;
+		}
+		logger.info("🔬 Creating PRIMARY Custom SpecimenResourceProvider Bean with JPA DAO");
+		return new SpecimenResourceProvider(specimenDao);
+	}
 
-        try {
-            // Log all current providers
-            List<IResourceProvider> currentProviders = restfulServer.getResourceProviders();
-            logger.info("📋 Current registered providers:");
-            for (IResourceProvider provider : currentProviders) {
-                logger.info("  - {} handles {}",
-                    provider.getClass().getSimpleName(),
-                    provider.getResourceType().getSimpleName());
-            }
+	/**
+	 * Custom Practitioner Resource Provider Bean
+	 */
+	@Bean(name = "practitionerResourceProvider")
+	@Primary
+	@ConditionalOnClass(Practitioner.class)
+	public BaseJpaResourceProvider<Practitioner> practitionerResourceProvider() {
+		if (practitionerDao == null) {
+			logger.warn("PractitionerDao not available, skipping custom provider creation");
+			return null;
+		}
+		logger.info("👨‍⚕️ Creating PRIMARY Custom PractitionerResourceProvider Bean with JPA DAO");
+		return new PractitionerResourceProvider(practitionerDao);
+	}
 
-            // Check if our custom providers are already registered
-            boolean hasCustomPatient = currentProviders.stream()
-                .anyMatch(p -> p instanceof PatientResourceProvider);
-            boolean hasCustomSpecimen = currentProviders.stream()
-                .anyMatch(p -> p instanceof SpecimenResourceProvider);
-            boolean hasCustomPractitioner = currentProviders.stream()
-                .anyMatch(p -> p instanceof PractitionerResourceProvider);
+	@Override
+	public void onApplicationEvent(ApplicationReadyEvent event) {
+		// Skip if not R4 or dependencies not available
+		if (providersRegistered || restfulServer == null || patientDao == null || medicationDao == null) {
+			return;
+		}
 
-            if (hasCustomPatient && hasCustomSpecimen && hasCustomPractitioner) {
-                logger.info("✅ All custom providers are already registered!");
-                providersRegistered = true;
-                return;
-            }
+		logger.info("🚀 APPLICATION READY - ENSURING CUSTOM PROVIDERS ARE ACTIVE 🚀");
 
-            // If not, force registration
-            logger.warn("⚠️ Custom providers not found, forcing registration...");
+		try {
+			// Log all current providers
+			List<IResourceProvider> currentProviders = restfulServer.getResourceProviders();
+			logger.info("📋 Current registered providers:");
+			for (IResourceProvider provider : currentProviders) {
+				logger.info("  - {} handles {}",
+						provider.getClass().getSimpleName(),
+						provider.getResourceType().getSimpleName());
+			}
 
-            // Remove existing providers and register custom ones
-            replaceProviders();
-            providersRegistered = true;
+			// Check if our custom providers are already registered
+			boolean hasCustomPatient = currentProviders.stream()
+					.anyMatch(p -> p instanceof PatientResourceProvider);
+			boolean hasCustomSpecimen = currentProviders.stream()
+					.anyMatch(p -> p instanceof SpecimenResourceProvider);
+			boolean hasCustomPractitioner = currentProviders.stream()
+					.anyMatch(p -> p instanceof PractitionerResourceProvider);
+			boolean hasCustomMedication = currentProviders.stream()
+					.anyMatch(p -> p instanceof MedicationResourceProvider);
 
-        } catch (Exception e) {
-            logger.error("❌ Error ensuring custom providers: ", e);
-        }
-    }
+			if (hasCustomPatient && hasCustomSpecimen && hasCustomPractitioner && hasCustomMedication) {
+				logger.info("✅ All custom providers are already registered!");
+				providersRegistered = true;
+				return;
+			}
 
-    private void replaceProviders() {
-        if (customPatientProvider == null || customSpecimenProvider == null || customPractitionerProvider == null) {
-            logger.warn("Custom providers not available, skipping replacement");
-            return;
-        }
+			// If not, force registration
+			logger.warn("⚠️ Custom providers not found, forcing registration...");
 
-        List<IResourceProvider> currentProviders = new ArrayList<>(restfulServer.getResourceProviders());
+			// Remove existing providers and register custom ones
+			replaceProviders();
+			providersRegistered = true;
 
-        // Remove existing Patient provider
-        removeExistingProvider(currentProviders, Patient.class, "Patient");
+		} catch (Exception e) {
+			logger.error("❌ Error ensuring custom providers: ", e);
+		}
+	}
 
-        // Remove existing Specimen provider
-        removeExistingProvider(currentProviders, Specimen.class, "Specimen");
+	private void replaceProviders() {
+		if (customPatientProvider == null || customSpecimenProvider == null || customPractitionerProvider == null
+				|| customMedicationProvider == null) {
+			logger.warn("Custom providers not available, skipping replacement");
+			return;
+		}
 
-        // Remove existing Practitioner provider
-        removeExistingProvider(currentProviders, Practitioner.class, "Practitioner");
+		List<IResourceProvider> currentProviders = new ArrayList<>(restfulServer.getResourceProviders());
 
-        // Register the Spring-managed beans (with proper dependency injection)
-        logger.info("🔄 Registering CUSTOM PatientResourceProvider (Spring Bean)");
-        restfulServer.registerProvider(customPatientProvider);
+		// Remove existing Patient provider
+		removeExistingProvider(currentProviders, Patient.class, "Patient");
 
-        logger.info("🔄 Registering CUSTOM SpecimenResourceProvider (Spring Bean)");
-        restfulServer.registerProvider(customSpecimenProvider);
+		// Remove existing Specimen provider
+		removeExistingProvider(currentProviders, Specimen.class, "Specimen");
 
-        logger.info("🔄 Registering CUSTOM PractitionerResourceProvider (Spring Bean)");
-        restfulServer.registerProvider(customPractitionerProvider);
+		// Remove existing Practitioner provider
+		removeExistingProvider(currentProviders, Practitioner.class, "Practitioner");
 
-        logger.info("🎯 Custom providers force-registered successfully!");
-    }
+		// Remove existing Medication provider
+		removeExistingProvider(currentProviders, Medication.class, "Medication");
 
-    private void removeExistingProvider(List<IResourceProvider> providers, Class<?> resourceType, String typeName) {
-        IResourceProvider existingProvider = providers.stream()
-            .filter(p -> p.getResourceType().equals(resourceType))
-            .findFirst().orElse(null);
+		// Register the Spring-managed beans (with proper dependency injection)
+		logger.info("🔄 Registering CUSTOM PatientResourceProvider (Spring Bean)");
+		restfulServer.registerProvider(customPatientProvider);
 
-        if (existingProvider != null) {
-            logger.info("🗑️ Unregistering existing {} provider: {}", typeName, existingProvider.getClass().getName());
-            restfulServer.unregisterProvider(existingProvider);
-        }
-    }
+		logger.info("🔄 Registering CUSTOM SpecimenResourceProvider (Spring Bean)");
+		restfulServer.registerProvider(customSpecimenProvider);
+
+		logger.info("🔄 Registering CUSTOM PractitionerResourceProvider (Spring Bean)");
+		restfulServer.registerProvider(customPractitionerProvider);
+
+		logger.info("🔄 Registering CUSTOM MedicationResourceProvider (Spring Bean)");
+		restfulServer.registerProvider(customMedicationProvider);
+
+		logger.info("🎯 Custom providers force-registered successfully!");
+	}
+
+	private void removeExistingProvider(List<IResourceProvider> providers, Class<?> resourceType, String typeName) {
+		IResourceProvider existingProvider = providers.stream()
+				.filter(p -> p.getResourceType().equals(resourceType))
+				.findFirst().orElse(null);
+
+		if (existingProvider != null) {
+			logger.info("🗑️ Unregistering existing {} provider: {}", typeName, existingProvider.getClass().getName());
+			restfulServer.unregisterProvider(existingProvider);
+		}
+	}
 }
