@@ -1,12 +1,8 @@
 package com.svasamm.fhir.config;
 
-import ca.uhn.fhir.jpa.api.dao.IFhirResourceDao;
-import ca.uhn.fhir.jpa.provider.BaseJpaResourceProvider;
-import ca.uhn.fhir.rest.server.IResourceProvider;
-import ca.uhn.fhir.rest.server.RestfulServer;
-import com.svasamm.fhir.ehr.provider.PatientResourceProvider;
-import com.svasamm.fhir.ehr.provider.PractitionerResourceProvider;
-import com.svasamm.fhir.biobank.provider.SpecimenResourceProvider;
+import java.util.ArrayList;
+import java.util.List;
+
 import org.hl7.fhir.r4.model.Patient;
 import org.hl7.fhir.r4.model.Practitioner;
 import org.hl7.fhir.r4.model.Specimen;
@@ -23,8 +19,14 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
 import org.springframework.context.annotation.Profile;
 
-import java.util.ArrayList;
-import java.util.List;
+import com.svasamm.fhir.biobank.provider.SpecimenResourceProvider;
+import com.svasamm.fhir.ehr.provider.PatientResourceProvider;
+import com.svasamm.fhir.ehr.provider.PractitionerResourceProvider;
+
+import ca.uhn.fhir.jpa.api.dao.IFhirResourceDao;
+import ca.uhn.fhir.jpa.provider.BaseJpaResourceProvider;
+import ca.uhn.fhir.rest.server.IResourceProvider;
+import ca.uhn.fhir.rest.server.RestfulServer;
 
 /**
  * Enhanced configuration that ensures custom providers are properly registered
