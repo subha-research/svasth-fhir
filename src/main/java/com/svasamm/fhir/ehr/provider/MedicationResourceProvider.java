@@ -191,19 +191,19 @@ public class MedicationResourceProvider extends BaseJpaResourceProvider<Medicati
 		throw new UnsupportedOperationException("Medication service not available");
 	}
 
-	@Operation(name = "$get-dto", idempotent = true)
-	public MedicationDto getMedicationDTO(@IdParam IdType theMedicationId) {
-		if (medicationMapper != null) {
-			try {
-				Medication medication = getDao().read(theMedicationId);
-				return medicationMapper.mapToDTO(medication);
-			} catch (Exception e) {
-				logger.error("Error mapping medication to DTO: ", e);
-				throw new RuntimeException("Failed to map medication: " + e.getMessage());
-			}
-		}
-		throw new UnsupportedOperationException("Medication mapper not available");
-	}
+	// @Operation(name = "$get-dto", idempotent = true)
+	// public MedicationDto getMedicationDTO(@IdParam IdType theMedicationId) {
+	// if (medicationMapper != null) {
+	// try {
+	// Medication medication = getDao().read(theMedicationId);
+	// return medicationMapper.mapToDTO(medication);
+	// } catch (Exception e) {
+	// logger.error("Error mapping medication to DTO: ", e);
+	// throw new RuntimeException("Failed to map medication: " + e.getMessage());
+	// }
+	// }
+	// throw new UnsupportedOperationException("Medication mapper not available");
+	// }
 
 	private void enrichMedicationForEHR(Medication medication) {
 		// Set default status if not present
