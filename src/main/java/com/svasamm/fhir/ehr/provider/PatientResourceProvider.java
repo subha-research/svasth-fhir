@@ -302,10 +302,12 @@ public class PatientResourceProvider extends BaseJpaResourceProvider<Patient> {
 			}
 		}
 
-		// Ensure at least one search parameter is provided
+		// Set a default count limit if no parameters are provided to prevent returning
+		// too many records
 		if (theFamily == null && theGiven == null && theIdentifier == null &&
-				theBirthDate == null && theActive == null) {
-			throw Exception.badRequest("At least one search parameter must be provided");
+				theBirthDate == null && theActive == null && theCount == null) {
+			// Log a warning for unrestricted search
+			logger.warn("Unrestricted patient search requested - applying default limit");
 		}
 	}
 
