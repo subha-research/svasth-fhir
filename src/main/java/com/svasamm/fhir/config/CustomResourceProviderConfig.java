@@ -8,15 +8,16 @@ import com.svasamm.fhir.ehr.provider.PatientResourceProvider;
 import com.svasamm.fhir.ehr.provider.PractitionerResourceProvider;
 import com.svasamm.fhir.biobank.provider.SpecimenResourceProvider;
 import com.svasamm.fhir.ehr.provider.MedicationResourceProvider;
+import com.svasamm.fhir.ehr.provider.ObservationResourceProvider;
 import org.hl7.fhir.r4.model.Patient;
 import org.hl7.fhir.r4.model.Medication;
+import org.hl7.fhir.r4.model.Observation;
 import org.hl7.fhir.r4.model.Practitioner;
 import org.hl7.fhir.r4.model.Specimen;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -34,7 +35,7 @@ import java.util.List;
  * Only active when NOT in test profile and when R4 classes are available
  */
 @Configuration
-@ConditionalOnClass({ Patient.class, Specimen.class, Practitioner.class, Medication.class })
+@ConditionalOnClass({ Patient.class, Specimen.class, Practitioner.class, Medication.class, Observation.class })
 @ConditionalOnProperty(name = "hapi.fhir.fhir_version", havingValue = "R4", matchIfMissing = true)
 @Profile("!test") // Exclude from test profile
 public class CustomResourceProviderConfig implements ApplicationListener<ApplicationReadyEvent> {
@@ -52,6 +53,9 @@ public class CustomResourceProviderConfig implements ApplicationListener<Applica
 
 	@Autowired(required = false)
 	private IFhirResourceDao<Practitioner> practitionerDao;
+
+	@Autowired(required = false)
+	private IFhirResourceDao<Observation> observationDao;
 
 	@Autowired(required = false)
 	private RestfulServer restfulServer;
@@ -72,6 +76,10 @@ public class CustomResourceProviderConfig implements ApplicationListener<Applica
 	@Autowired(required = false)
 	@Qualifier("practitionerResourceProvider")
 	private BaseJpaResourceProvider<Practitioner> customPractitionerProvider;
+
+	@Autowired(required = false)
+	@Qualifier("observationResourceProvider")
+	private BaseJpaResourceProvider<Observation> customObservationProvider;
 
 	private boolean providersRegistered = false;
 
@@ -132,6 +140,21 @@ public class CustomResourceProviderConfig implements ApplicationListener<Applica
 		return new PractitionerResourceProvider(practitionerDao);
 	}
 
+	/**
+	 * Custom Observation Resource Provider Bean
+	 */
+	@Bean(name = "observationResourceProvider")
+	@Primary
+	@ConditionalOnClass(Observation.class)
+	public BaseJpaResourceProvider<Observation> observationResourceProvider() {
+		if (observationDao == null) {
+			logger.warn("ObservationDao not available, skipping custom provider creation");
+			return null;
+		}
+		logger.info("📊 Creating PRIMARY Custom ObservationResourceProvider Bean with JPA DAO");
+		return new ObservationResourceProvider(observationDao);
+	}
+
 	@Override
 	public void onApplicationEvent(ApplicationReadyEvent event) {
 		// Skip if not R4 or dependencies not available
@@ -160,8 +183,11 @@ public class CustomResourceProviderConfig implements ApplicationListener<Applica
 					.anyMatch(p -> p instanceof PractitionerResourceProvider);
 			boolean hasCustomMedication = currentProviders.stream()
 					.anyMatch(p -> p instanceof MedicationResourceProvider);
+			boolean hasCustomObservation = currentProviders.stream()
+					.anyMatch(p -> p instanceof ObservationResourceProvider);
 
-			if (hasCustomPatient && hasCustomSpecimen && hasCustomPractitioner && hasCustomMedication) {
+			if (hasCustomPatient && hasCustomSpecimen && hasCustomPractitioner && hasCustomMedication
+					&& hasCustomObservation) {
 				logger.info("✅ All custom providers are already registered!");
 				providersRegistered = true;
 				return;
@@ -181,7 +207,7 @@ public class CustomResourceProviderConfig implements ApplicationListener<Applica
 
 	private void replaceProviders() {
 		if (customPatientProvider == null || customSpecimenProvider == null || customPractitionerProvider == null
-				|| customMedicationProvider == null) {
+				|| customMedicationProvider == null || customObservationProvider == null) {
 			logger.warn("Custom providers not available, skipping replacement");
 			return;
 		}
@@ -200,6 +226,9 @@ public class CustomResourceProviderConfig implements ApplicationListener<Applica
 		// Remove existing Medication provider
 		removeExistingProvider(currentProviders, Medication.class, "Medication");
 
+		// Remove existing Observation provider
+		removeExistingProvider(currentProviders, Observation.class, "Observation");
+
 		// Register the Spring-managed beans (with proper dependency injection)
 		logger.info("🔄 Registering CUSTOM PatientResourceProvider (Spring Bean)");
 		restfulServer.registerProvider(customPatientProvider);
@@ -212,6 +241,9 @@ public class CustomResourceProviderConfig implements ApplicationListener<Applica
 
 		logger.info("🔄 Registering CUSTOM MedicationResourceProvider (Spring Bean)");
 		restfulServer.registerProvider(customMedicationProvider);
+
+		logger.info("🔄 Registering CUSTOM ObservationResourceProvider (Spring Bean)");
+		restfulServer.registerProvider(customObservationProvider);
 
 		logger.info("🎯 Custom providers force-registered successfully!");
 	}
