@@ -1,7 +1,5 @@
 package com.svasamm.fhir.config;
 
-import static org.junit.Assert.fail;
-
 import java.util.ArrayList;
 import java.util.List;
 
@@ -50,7 +48,7 @@ public class CustomResourceProviderConfig implements ApplicationListener<Applica
 	private IFhirResourceDao<Patient> patientDao;
 
 	@Autowired(required = false)
-	private IFhirResourceDao<Encounter> encounterDao;
+	private IFhirResourceDao<Encounter> EncounterDao;
 
 	@Autowired(required = false)
 	private IFhirResourceDao<Medication> medicationDao;
@@ -70,8 +68,8 @@ public class CustomResourceProviderConfig implements ApplicationListener<Applica
 	private BaseJpaResourceProvider<Patient> customPatientProvider;
 
 	@Autowired(required = false)
-@Qualifier("visitResourceProvider")
-private BaseJpaResourceProvider<Encounter> customVisitProvider;
+	@Qualifier("visitResourceProvider")
+	private BaseJpaResourceProvider<Encounter> customEncounterProvider;
 
 	@Autowired(required = false)
 	@Qualifier("medicationResourceProvider")
@@ -101,10 +99,7 @@ private BaseJpaResourceProvider<Encounter> customVisitProvider;
 		logger.info("🏥 Creating PRIMARY Custom PatientResourceProvider Bean with JPA DAO");
 		return new PatientResourceProvider(patientDao);
 	}
-    
-	/**
-	 * Custom Medication Resource Provider Bean
-	 */
+
 	@Bean(name = "medicationResourceProvider")
 	@Primary
 	@ConditionalOnClass(Medication.class)
@@ -124,14 +119,13 @@ private BaseJpaResourceProvider<Encounter> customVisitProvider;
 	@Primary
 	@ConditionalOnClass(Encounter.class)
 	public BaseJpaResourceProvider<Encounter> visitResourceProvider() {
-		if (encounterDao == null) {
+		if (EncounterDao == null) {
 			logger.warn("EncounterDao not available, skipping custom provider creation");
 			return null;
 		}
-		logger.info("💊 Creating PRIMARY Custom visitResourceProvider Bean with JPA DAO");
-		return new VisitResourceProvider(encounterDao);
+		logger.info("🏥 Creating PRIMARY Custom visitResourceProvider Bean with JPA DAO");
+		return new VisitResourceProvider(EncounterDao);
 	}
-
 
 	/**
 	 * Custom Specimen Resource Provider Bean
@@ -166,7 +160,7 @@ private BaseJpaResourceProvider<Encounter> customVisitProvider;
 	@Override
 	public void onApplicationEvent(ApplicationReadyEvent event) {
 		// Skip if not R4 or dependencies not available
-		if (providersRegistered || restfulServer == null || patientDao == null || medicationDao == null || encounterDao == null) {
+		if (providersRegistered || restfulServer == null || patientDao == null || medicationDao == null || EncounterDao == null) {
 			return;
 		}
 
@@ -194,6 +188,7 @@ private BaseJpaResourceProvider<Encounter> customVisitProvider;
 			boolean hasCustomEncounter = currentProviders.stream()
 					.anyMatch(p -> p instanceof VisitResourceProvider);
 
+
 			if (hasCustomPatient && hasCustomSpecimen && hasCustomPractitioner && hasCustomMedication && hasCustomEncounter) {
 				logger.info("✅ All custom providers are already registered!");
 				providersRegistered = true;
@@ -214,7 +209,7 @@ private BaseJpaResourceProvider<Encounter> customVisitProvider;
 
 	private void replaceProviders() {
 		if (customPatientProvider == null || customSpecimenProvider == null || customPractitionerProvider == null
-				|| customMedicationProvider == null || customVisitProvider == null) {
+				|| customMedicationProvider == null || customEncounterProvider == null) {
 			logger.warn("Custom providers not available, skipping replacement");
 			return;
 		}
@@ -234,8 +229,7 @@ private BaseJpaResourceProvider<Encounter> customVisitProvider;
 		removeExistingProvider(currentProviders, Medication.class, "Medication");
 
 		// Remove existing Visit provider
-		removeExistingProvider(currentProviders,Encounter.class, "Encounter");
-
+		removeExistingProvider(currentProviders, Encounter.class, "Encounter");
 
 		// Register the Spring-managed beans (with proper dependency injection)
 		logger.info("🔄 Registering CUSTOM PatientResourceProvider (Spring Bean)");
@@ -250,8 +244,8 @@ private BaseJpaResourceProvider<Encounter> customVisitProvider;
 		logger.info("🔄 Registering CUSTOM MedicationResourceProvider (Spring Bean)");
 		restfulServer.registerProvider(customMedicationProvider);
 
-		logger.info("🔄 Registering CUSTOM VisitResourceProvider (Spring Bean)");
-		restfulServer.registerProvider(customVisitProvider);
+		logger.info("🔄 Registering CUSTOM MedicationResourceProvider (Spring Bean)");
+		restfulServer.registerProvider(customEncounterProvider);
 
 		logger.info("🎯 Custom providers force-registered successfully!");
 	}
