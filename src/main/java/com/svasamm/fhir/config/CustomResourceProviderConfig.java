@@ -1,11 +1,20 @@
 package com.svasamm.fhir.config;
-
 import java.util.ArrayList;
 import java.util.List;
 
 import org.hl7.fhir.r4.model.Medication;
 import org.hl7.fhir.r4.model.Encounter;
 import org.hl7.fhir.r4.model.Patient;
+import ca.uhn.fhir.jpa.api.dao.IFhirResourceDao;
+import ca.uhn.fhir.jpa.provider.BaseJpaResourceProvider;
+import ca.uhn.fhir.rest.server.IResourceProvider;
+import ca.uhn.fhir.rest.server.RestfulServer;
+import com.svasamm.fhir.ehr.provider.PatientResourceProvider;
+import com.svasamm.fhir.ehr.provider.PractitionerResourceProvider;
+import com.svasamm.fhir.biobank.provider.SpecimenResourceProvider;
+import com.svasamm.fhir.ehr.provider.MedicationResourceProvider;
+import com.svasamm.fhir.ehr.provider.ObservationResourceProvider;
+import org.hl7.fhir.r4.model.Observation;
 import org.hl7.fhir.r4.model.Practitioner;
 import org.hl7.fhir.r4.model.Specimen;
 import org.slf4j.Logger;
@@ -20,24 +29,16 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
 import org.springframework.context.annotation.Profile;
-
-import com.svasamm.fhir.biobank.provider.SpecimenResourceProvider;
-import com.svasamm.fhir.ehr.provider.MedicationResourceProvider;
-import com.svasamm.fhir.ehr.provider.PatientResourceProvider;
-import com.svasamm.fhir.ehr.provider.PractitionerResourceProvider;
 import com.svasamm.fhir.ehr.provider.VisitResourceProvider;
 
-import ca.uhn.fhir.jpa.api.dao.IFhirResourceDao;
-import ca.uhn.fhir.jpa.provider.BaseJpaResourceProvider;
-import ca.uhn.fhir.rest.server.IResourceProvider;
-import ca.uhn.fhir.rest.server.RestfulServer;
+
 
 /**
  * Enhanced configuration that ensures custom providers are properly registered
  * Only active when NOT in test profile and when R4 classes are available
  */
 @Configuration
-@ConditionalOnClass({ Patient.class, Specimen.class, Practitioner.class, Medication.class, Encounter.class })
+@ConditionalOnClass({ Patient.class, Specimen.class, Practitioner.class, Medication.class, Observation.class, Encounter.class  })
 @ConditionalOnProperty(name = "hapi.fhir.fhir_version", havingValue = "R4", matchIfMissing = true)
 @Profile("!test") // Exclude from test profile
 public class CustomResourceProviderConfig implements ApplicationListener<ApplicationReadyEvent> {
@@ -58,6 +59,9 @@ public class CustomResourceProviderConfig implements ApplicationListener<Applica
 
 	@Autowired(required = false)
 	private IFhirResourceDao<Practitioner> practitionerDao;
+
+	@Autowired(required = false)
+	private IFhirResourceDao<Observation> observationDao;
 
 	@Autowired(required = false)
 	private RestfulServer restfulServer;
@@ -82,6 +86,10 @@ public class CustomResourceProviderConfig implements ApplicationListener<Applica
 	@Autowired(required = false)
 	@Qualifier("practitionerResourceProvider")
 	private BaseJpaResourceProvider<Practitioner> customPractitionerProvider;
+
+	@Autowired(required = false)
+	@Qualifier("observationResourceProvider")
+	private BaseJpaResourceProvider<Observation> customObservationProvider;
 
 	private boolean providersRegistered = false;
 
@@ -157,6 +165,21 @@ public class CustomResourceProviderConfig implements ApplicationListener<Applica
 		return new PractitionerResourceProvider(practitionerDao);
 	}
 
+	/**
+	 * Custom Observation Resource Provider Bean
+	 */
+	@Bean(name = "observationResourceProvider")
+	@Primary
+	@ConditionalOnClass(Observation.class)
+	public BaseJpaResourceProvider<Observation> observationResourceProvider() {
+		if (observationDao == null) {
+			logger.warn("ObservationDao not available, skipping custom provider creation");
+			return null;
+		}
+		logger.info("📊 Creating PRIMARY Custom ObservationResourceProvider Bean with JPA DAO");
+		return new ObservationResourceProvider(observationDao);
+	}
+
 	@Override
 	public void onApplicationEvent(ApplicationReadyEvent event) {
 		// Skip if not R4 or dependencies not available
@@ -187,9 +210,10 @@ public class CustomResourceProviderConfig implements ApplicationListener<Applica
 					.anyMatch(p -> p instanceof MedicationResourceProvider);
 			boolean hasCustomEncounter = currentProviders.stream()
 					.anyMatch(p -> p instanceof VisitResourceProvider);
+			boolean hasCustomObservation = currentProviders.stream()
+					.anyMatch(p -> p instanceof ObservationResourceProvider);
 
-
-			if (hasCustomPatient && hasCustomSpecimen && hasCustomPractitioner && hasCustomMedication && hasCustomEncounter) {
+			if (hasCustomPatient && hasCustomSpecimen && hasCustomPractitioner && hasCustomMedication && hasCustomEncounter && hasCustomObservation) {
 				logger.info("✅ All custom providers are already registered!");
 				providersRegistered = true;
 				return;
@@ -208,8 +232,8 @@ public class CustomResourceProviderConfig implements ApplicationListener<Applica
 	}
 
 	private void replaceProviders() {
-		if (customPatientProvider == null || customSpecimenProvider == null || customPractitionerProvider == null
-				|| customMedicationProvider == null || customEncounterProvider == null) {
+		if (customPatientProvider == null || customSpecimenProvider == null || customPractitionerProvider == null || customMedicationProvider == null || customObservationProvider == null) {
+
 			logger.warn("Custom providers not available, skipping replacement");
 			return;
 		}
@@ -231,6 +255,9 @@ public class CustomResourceProviderConfig implements ApplicationListener<Applica
 		// Remove existing Visit provider
 		removeExistingProvider(currentProviders, Encounter.class, "Encounter");
 
+		// Remove existing Observation provider
+		removeExistingProvider(currentProviders, Observation.class, "Observation");
+
 		// Register the Spring-managed beans (with proper dependency injection)
 		logger.info("🔄 Registering CUSTOM PatientResourceProvider (Spring Bean)");
 		restfulServer.registerProvider(customPatientProvider);
@@ -246,6 +273,9 @@ public class CustomResourceProviderConfig implements ApplicationListener<Applica
 
 		logger.info("🔄 Registering CUSTOM MedicationResourceProvider (Spring Bean)");
 		restfulServer.registerProvider(customEncounterProvider);
+
+		logger.info("🔄 Registering CUSTOM ObservationResourceProvider (Spring Bean)");
+		restfulServer.registerProvider(customObservationProvider);
 
 		logger.info("🎯 Custom providers force-registered successfully!");
 	}
