@@ -1,22 +1,19 @@
 package com.svasamm.fhir.config;
 
-import ca.uhn.fhir.jpa.api.dao.IFhirResourceDao;
-import ca.uhn.fhir.jpa.provider.BaseJpaResourceProvider;
-import ca.uhn.fhir.rest.server.IResourceProvider;
-import ca.uhn.fhir.rest.server.RestfulServer;
-import com.svasamm.fhir.ehr.provider.PatientResourceProvider;
-import com.svasamm.fhir.ehr.provider.PractitionerResourceProvider;
-import com.svasamm.fhir.biobank.provider.SpecimenResourceProvider;
-import com.svasamm.fhir.ehr.provider.MedicationResourceProvider;
-import org.hl7.fhir.r4.model.Patient;
+import static org.junit.Assert.fail;
+
+import java.util.ArrayList;
+import java.util.List;
+
 import org.hl7.fhir.r4.model.Medication;
+import org.hl7.fhir.r4.model.Encounter;
+import org.hl7.fhir.r4.model.Patient;
 import org.hl7.fhir.r4.model.Practitioner;
 import org.hl7.fhir.r4.model.Specimen;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -26,15 +23,23 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
 import org.springframework.context.annotation.Profile;
 
-import java.util.ArrayList;
-import java.util.List;
+import com.svasamm.fhir.biobank.provider.SpecimenResourceProvider;
+import com.svasamm.fhir.ehr.provider.MedicationResourceProvider;
+import com.svasamm.fhir.ehr.provider.PatientResourceProvider;
+import com.svasamm.fhir.ehr.provider.PractitionerResourceProvider;
+import com.svasamm.fhir.ehr.provider.VisitResourceProvider;
+
+import ca.uhn.fhir.jpa.api.dao.IFhirResourceDao;
+import ca.uhn.fhir.jpa.provider.BaseJpaResourceProvider;
+import ca.uhn.fhir.rest.server.IResourceProvider;
+import ca.uhn.fhir.rest.server.RestfulServer;
 
 /**
  * Enhanced configuration that ensures custom providers are properly registered
  * Only active when NOT in test profile and when R4 classes are available
  */
 @Configuration
-@ConditionalOnClass({ Patient.class, Specimen.class, Practitioner.class, Medication.class })
+@ConditionalOnClass({ Patient.class, Specimen.class, Practitioner.class, Medication.class, Encounter.class })
 @ConditionalOnProperty(name = "hapi.fhir.fhir_version", havingValue = "R4", matchIfMissing = true)
 @Profile("!test") // Exclude from test profile
 public class CustomResourceProviderConfig implements ApplicationListener<ApplicationReadyEvent> {
@@ -43,6 +48,9 @@ public class CustomResourceProviderConfig implements ApplicationListener<Applica
 
 	@Autowired(required = false)
 	private IFhirResourceDao<Patient> patientDao;
+
+	@Autowired(required = false)
+	private IFhirResourceDao<Encounter> encounterDao;
 
 	@Autowired(required = false)
 	private IFhirResourceDao<Medication> medicationDao;
@@ -60,6 +68,10 @@ public class CustomResourceProviderConfig implements ApplicationListener<Applica
 	@Autowired(required = false)
 	@Qualifier("patientResourceProvider")
 	private BaseJpaResourceProvider<Patient> customPatientProvider;
+
+	@Autowired(required = false)
+@Qualifier("visitResourceProvider")
+private BaseJpaResourceProvider<Encounter> customVisitProvider;
 
 	@Autowired(required = false)
 	@Qualifier("medicationResourceProvider")
@@ -89,7 +101,10 @@ public class CustomResourceProviderConfig implements ApplicationListener<Applica
 		logger.info("🏥 Creating PRIMARY Custom PatientResourceProvider Bean with JPA DAO");
 		return new PatientResourceProvider(patientDao);
 	}
-
+    
+	/**
+	 * Custom Medication Resource Provider Bean
+	 */
 	@Bean(name = "medicationResourceProvider")
 	@Primary
 	@ConditionalOnClass(Medication.class)
@@ -101,6 +116,22 @@ public class CustomResourceProviderConfig implements ApplicationListener<Applica
 		logger.info("💊 Creating PRIMARY Custom MedicationResourceProvider Bean with JPA DAO");
 		return new MedicationResourceProvider(medicationDao);
 	}
+
+	/**
+	 * Custom Visit Resource Provider Bean
+	 */
+	@Bean(name = "visitResourceProvider")
+	@Primary
+	@ConditionalOnClass(Encounter.class)
+	public BaseJpaResourceProvider<Encounter> visitResourceProvider() {
+		if (encounterDao == null) {
+			logger.warn("EncounterDao not available, skipping custom provider creation");
+			return null;
+		}
+		logger.info("💊 Creating PRIMARY Custom visitResourceProvider Bean with JPA DAO");
+		return new VisitResourceProvider(encounterDao);
+	}
+
 
 	/**
 	 * Custom Specimen Resource Provider Bean
@@ -135,7 +166,7 @@ public class CustomResourceProviderConfig implements ApplicationListener<Applica
 	@Override
 	public void onApplicationEvent(ApplicationReadyEvent event) {
 		// Skip if not R4 or dependencies not available
-		if (providersRegistered || restfulServer == null || patientDao == null || medicationDao == null) {
+		if (providersRegistered || restfulServer == null || patientDao == null || medicationDao == null || encounterDao == null) {
 			return;
 		}
 
@@ -160,8 +191,10 @@ public class CustomResourceProviderConfig implements ApplicationListener<Applica
 					.anyMatch(p -> p instanceof PractitionerResourceProvider);
 			boolean hasCustomMedication = currentProviders.stream()
 					.anyMatch(p -> p instanceof MedicationResourceProvider);
+			boolean hasCustomEncounter = currentProviders.stream()
+					.anyMatch(p -> p instanceof VisitResourceProvider);
 
-			if (hasCustomPatient && hasCustomSpecimen && hasCustomPractitioner && hasCustomMedication) {
+			if (hasCustomPatient && hasCustomSpecimen && hasCustomPractitioner && hasCustomMedication && hasCustomEncounter) {
 				logger.info("✅ All custom providers are already registered!");
 				providersRegistered = true;
 				return;
@@ -181,7 +214,7 @@ public class CustomResourceProviderConfig implements ApplicationListener<Applica
 
 	private void replaceProviders() {
 		if (customPatientProvider == null || customSpecimenProvider == null || customPractitionerProvider == null
-				|| customMedicationProvider == null) {
+				|| customMedicationProvider == null || customVisitProvider == null) {
 			logger.warn("Custom providers not available, skipping replacement");
 			return;
 		}
@@ -200,6 +233,10 @@ public class CustomResourceProviderConfig implements ApplicationListener<Applica
 		// Remove existing Medication provider
 		removeExistingProvider(currentProviders, Medication.class, "Medication");
 
+		// Remove existing Visit provider
+		removeExistingProvider(currentProviders,Encounter.class, "Encounter");
+
+
 		// Register the Spring-managed beans (with proper dependency injection)
 		logger.info("🔄 Registering CUSTOM PatientResourceProvider (Spring Bean)");
 		restfulServer.registerProvider(customPatientProvider);
@@ -212,6 +249,9 @@ public class CustomResourceProviderConfig implements ApplicationListener<Applica
 
 		logger.info("🔄 Registering CUSTOM MedicationResourceProvider (Spring Bean)");
 		restfulServer.registerProvider(customMedicationProvider);
+
+		logger.info("🔄 Registering CUSTOM VisitResourceProvider (Spring Bean)");
+		restfulServer.registerProvider(customVisitProvider);
 
 		logger.info("🎯 Custom providers force-registered successfully!");
 	}
