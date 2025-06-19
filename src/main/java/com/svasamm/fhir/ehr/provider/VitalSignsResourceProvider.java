@@ -1,7 +1,6 @@
 package com.svasamm.fhir.ehr.provider;
 
 import java.io.IOException;
-import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Date;
@@ -155,29 +154,6 @@ public class VitalSignsResourceProvider extends BaseJpaResourceProvider<Observat
         }
     }
 
-    @Search
-    public List<Observation> search(
-            @OptionalParam(name = Observation.SP_SUBJECT) ReferenceParam theSubject,
-            @OptionalParam(name = Observation.SP_PATIENT) ReferenceParam thePatient,
-            @OptionalParam(name = Observation.SP_CODE) TokenParam theCode,
-            @OptionalParam(name = Observation.SP_DATE) DateRangeParam theDate,
-            @OptionalParam(name = Observation.SP_STATUS) TokenParam theStatus,
-            @OptionalParam(name = Observation.SP_ENCOUNTER) ReferenceParam theEncounter,
-            @OptionalParam(name = "_count") NumberParam theCount) {
-
-        logger.info("CUSTOM VitalSignsResourceProvider.search() called");
-
-        // Always filter for vital signs category
-        if (vitalSignsService != null) {
-            return vitalSignsService.searchVitalSigns(theSubject, thePatient, theCode,
-                    theDate, theStatus, theEncounter, theCount);
-        }
-
-        // Otherwise, fall back to default JPA search with vital signs filter
-        return searchByParameters(
-                buildSearchParams(theSubject, thePatient, theCode, theDate, theStatus, theEncounter, theCount));
-    }
-
     /**
      * Custom operation to get vital sign in mapped format
      * Usage: GET /Observation/{id}/$vital-mapped
@@ -196,31 +172,26 @@ public class VitalSignsResourceProvider extends BaseJpaResourceProvider<Observat
             Observation observation = getDao().read(theId, theRequestDetails);
 
             if (observation == null) {
-                writeErrorResponse(theResponse, HttpServletResponse.SC_NOT_FOUND, 
-                    "Vital sign not found");
+                sendErrorResponse(theResponse, HttpServletResponse.SC_NOT_FOUND, "Vital sign not found");
                 return;
             }
 
             // Check if it's a vital sign
             if (!isVitalSign(observation)) {
-                writeErrorResponse(theResponse, HttpServletResponse.SC_BAD_REQUEST, 
-                    "Observation is not a vital sign");
+                sendErrorResponse(theResponse, HttpServletResponse.SC_BAD_REQUEST, "Observation is not a vital sign");
                 return;
             }
 
             // Map to vital signs format
             VitalSignsDto mappedVitalSign = vitalSignsMapper.mapToDTO(observation);
-            String jsonResponse = objectMapper.writerWithDefaultPrettyPrinter()
-                .writeValueAsString(mappedVitalSign);
+            String jsonResponse = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(mappedVitalSign);
 
-            writeSuccessResponse(theResponse, jsonResponse);
-            
+            sendSuccessResponse(theResponse, jsonResponse);
             logger.info("Mapped vital sign response sent for ID: {}", theId);
 
         } catch (Exception e) {
             logger.error("Error getting mapped vital sign {}: ", theId, e);
-            writeErrorResponse(theResponse, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, 
-                "Internal server error");
+            sendErrorResponse(theResponse, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Internal server error");
         }
     }
 
@@ -245,8 +216,7 @@ public class VitalSignsResourceProvider extends BaseJpaResourceProvider<Observat
 
         try {
             if (vitalSignsService == null) {
-                writeErrorResponse(theResponse, HttpServletResponse.SC_SERVICE_UNAVAILABLE, 
-                    "Vital Signs service not available");
+                sendErrorResponse(theResponse, HttpServletResponse.SC_SERVICE_UNAVAILABLE, "Vital Signs service not available");
                 return;
             }
 
@@ -254,93 +224,16 @@ public class VitalSignsResourceProvider extends BaseJpaResourceProvider<Observat
             List<Observation> vitalSigns = vitalSignsService.searchVitalSigns(
                     theSubject, thePatient, theCode, theDate, theStatus, theEncounter, theCount);
 
-            // Build JSON response
-            StringBuilder jsonResponse = new StringBuilder();
-            jsonResponse.append("{")
-                .append("\"resourceType\":\"Bundle\",")
-                .append("\"type\":\"searchset\",")
-                .append("\"total\":").append(vitalSigns.size()).append(",")
-                .append("\"entry\":[");
-
-            for (int i = 0; i < vitalSigns.size(); i++) {
-                if (i > 0) {
-                    jsonResponse.append(",");
-                }
-                VitalSignsDto mappedVitalSign = vitalSignsMapper.mapToDTO(vitalSigns.get(i));
-                String vitalSignJson = objectMapper.writeValueAsString(mappedVitalSign);
-                jsonResponse.append("{\"resource\":").append(vitalSignJson).append("}");
-            }
-            jsonResponse.append("]}");
-
-            writeSuccessResponse(theResponse, jsonResponse.toString());
+            // Build bundle response
+            String jsonResponse = buildVitalSignsBundleResponse(vitalSigns, "searchset", null);
             
-            logger.info("Mapped vital signs search response sent, {} vital signs found", 
-                vitalSigns.size());
+            sendSuccessResponse(theResponse, jsonResponse);
+            logger.info("Mapped vital signs search response sent, {} vital signs found", vitalSigns.size());
 
         } catch (Exception e) {
             logger.error("Error in search mapped vital signs: ", e);
-            writeErrorResponse(theResponse, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, 
-                "Internal server error");
+            sendErrorResponse(theResponse, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Internal server error");
         }
-    }
-
-    @Operation(name = "$vital-signs-panel", idempotent = true)
-    public Bundle vitalSignsPanel(@IdParam IdType thePatientId) {
-        logger.info("Custom VitalSignsResourceProvider.vitalSignsPanel() called for patient: {}", thePatientId);
-        
-        if (vitalSignsService != null) {
-            return vitalSignsService.generateVitalSignsPanel(thePatientId.getIdPart());
-        }
-        throw new UnsupportedOperationException("Vital Signs service not available");
-    }
-
-    @Operation(name = "$vital-signs-trend", idempotent = true)
-    public Bundle vitalSignsTrend(
-            @IdParam IdType thePatientId,
-            @OperationParam(name = "code") TokenParam code,
-            @OperationParam(name = "start-date") DateParam startDate,
-            @OperationParam(name = "end-date") DateParam endDate) {
-
-        logger.info("Custom VitalSignsResourceProvider.vitalSignsTrend() called for patient: {}", thePatientId);
-        
-        if (vitalSignsService != null) {
-            return vitalSignsService.getVitalSignsTrend(
-                    thePatientId.getIdPart(),
-                    code,
-                    startDate != null ? startDate.getValue() : null,
-                    endDate != null ? endDate.getValue() : null);
-        }
-        throw new UnsupportedOperationException("Vital Signs service not available");
-    }
-
-    @Operation(name = "$latest-vital-signs", idempotent = true)
-    public Bundle latestVitalSigns(
-            @IdParam IdType thePatientId,
-            @OperationParam(name = "period") NumberParam periodHours) {
-
-        logger.info("Custom VitalSignsResourceProvider.latestVitalSigns() called for patient: {}", thePatientId);
-        
-        if (vitalSignsService != null) {
-            return vitalSignsService.getLatestVitalSigns(
-                    thePatientId.getIdPart(),
-                    periodHours != null ? periodHours.getValue().intValue() : 24);
-        }
-        throw new UnsupportedOperationException("Vital Signs service not available");
-    }
-
-    @Operation(name = "$vital-signs-summary", idempotent = true)
-    public Bundle vitalSignsSummary(
-            @IdParam IdType thePatientId,
-            @OperationParam(name = "encounter") ReferenceParam encounter) {
-
-        logger.info("Custom VitalSignsResourceProvider.vitalSignsSummary() called for patient: {}", thePatientId);
-        
-        if (vitalSignsService != null) {
-            return vitalSignsService.getVitalSignsSummary(
-                    thePatientId.getIdPart(),
-                    encounter != null ? encounter.getValue() : null);
-        }
-        throw new UnsupportedOperationException("Vital Signs service not available");
     }
 
     /**
@@ -364,14 +257,12 @@ public class VitalSignsResourceProvider extends BaseJpaResourceProvider<Observat
 
         try {
             if (thePatient == null) {
-                writeErrorResponse(theResponse, HttpServletResponse.SC_BAD_REQUEST, 
-                    "Patient parameter is required");
+                sendErrorResponse(theResponse, HttpServletResponse.SC_BAD_REQUEST, "Patient parameter is required");
                 return;
             }
 
             if (vitalSignsService == null) {
-                writeErrorResponse(theResponse, HttpServletResponse.SC_SERVICE_UNAVAILABLE, 
-                    "Vital Signs service not available");
+                sendErrorResponse(theResponse, HttpServletResponse.SC_SERVICE_UNAVAILABLE, "Vital Signs service not available");
                 return;
             }
 
@@ -385,14 +276,336 @@ public class VitalSignsResourceProvider extends BaseJpaResourceProvider<Observat
             List<Observation> vitalSigns = vitalSignsService.searchVitalSigns(
                     subjectParam, thePatient, theCode, dateRange, null, null, theCount);
 
-            // Build JSON response
+            // Build bundle response with patient info
+            String jsonResponse = buildVitalSignsBundleResponse(vitalSigns, "searchset", thePatient.getValue());
+            
+            sendSuccessResponse(theResponse, jsonResponse);
+            logger.info("Mapped patient vital signs response sent, {} vital signs found for patient {}",
+                    vitalSigns.size(), thePatient.getValue());
+
+        } catch (Exception e) {
+            logger.error("Error in get patient vital signs mapped: ", e);
+            sendErrorResponse(theResponse, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Internal server error");
+        }
+    }
+
+    /**
+     * Custom operation to get vital signs summary in mapped format
+     * Usage: GET /Observation/{patientId}/$vital-summary-mapped?encounter=Encounter/123
+     */
+    @Operation(name = "$vital-summary-mapped", idempotent = true)
+    public void vitalSignsSummaryMapped(
+            @IdParam IdType thePatientId,
+            @OperationParam(name = "encounter") ReferenceParam theEncounter,
+            HttpServletRequest theRequest,
+            HttpServletResponse theResponse,
+            RequestDetails theRequestDetails) {
+
+        logger.info("Custom VitalSignsResourceProvider.vitalSignsSummaryMapped() called for patient: {}", thePatientId);
+
+        try {
+            if (vitalSignsService == null) {
+                sendErrorResponse(theResponse, HttpServletResponse.SC_SERVICE_UNAVAILABLE, "Vital Signs service not available");
+                return;
+            }
+
+            // Get the latest vital signs for the patient
+            ReferenceParam patientParam = new ReferenceParam("Patient/" + thePatientId.getIdPart());
+            
+            // Create date range for last 24 hours
+            DateRangeParam dateRange = buildDateRange(new NumberParam(24), null, null);
+
+            // Perform search using service
+            List<Observation> vitalSigns = vitalSignsService.searchVitalSigns(
+                    patientParam, patientParam, null, dateRange, null, theEncounter, new NumberParam(50));
+
+            // Build collection bundle response
+            String jsonResponse = buildVitalSignsBundleResponse(vitalSigns, "collection", thePatientId.getIdPart(), 
+                    "patientId", thePatientId.getIdPart());
+            
+            sendSuccessResponse(theResponse, jsonResponse);
+            logger.info("Vital signs summary response sent for patient: {}", thePatientId);
+
+        } catch (Exception e) {
+            logger.error("Error in vital signs summary: ", e);
+            sendErrorResponse(theResponse, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Internal server error");
+        }
+    }
+
+    /**
+     * Custom operation to get latest vital signs in mapped format
+     * Usage: GET /Observation/{patientId}/$latest-vitals-mapped?period=24
+     */
+    @Operation(name = "$latest-vitals-mapped", idempotent = true)
+    public void latestVitalSignsMapped(
+            @IdParam IdType thePatientId,
+            @OperationParam(name = "period") NumberParam thePeriodHours,
+            @OperationParam(name = "_count") NumberParam theCount,
+            HttpServletRequest theRequest,
+            HttpServletResponse theResponse,
+            RequestDetails theRequestDetails) {
+
+        logger.info("Custom VitalSignsResourceProvider.latestVitalSignsMapped() called for patient: {}", thePatientId);
+
+        try {
+            if (vitalSignsService == null) {
+                sendErrorResponse(theResponse, HttpServletResponse.SC_SERVICE_UNAVAILABLE, "Vital Signs service not available");
+                return;
+            }
+
+            int periodHours = thePeriodHours != null ? thePeriodHours.getValue().intValue() : 24;
+            
+            // Create date range for the specified period
+            DateRangeParam dateRange = buildDateRange(new NumberParam(periodHours), null, null);
+            ReferenceParam patientParam = new ReferenceParam("Patient/" + thePatientId.getIdPart());
+
+            // Perform search using service
+            List<Observation> vitalSigns = vitalSignsService.searchVitalSigns(
+                    patientParam, patientParam, null, dateRange, null, null, theCount);
+
+            // Build latest vitals response
+            String jsonResponse = buildLatestVitalSignsResponse(vitalSigns, thePatientId.getIdPart(), periodHours);
+            
+            sendSuccessResponse(theResponse, jsonResponse);
+            logger.info("Latest vital signs response sent for patient: {} (period: {} hours)", thePatientId, periodHours);
+
+        } catch (Exception e) {
+            logger.error("Error in latest vital signs: ", e);
+            sendErrorResponse(theResponse, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Internal server error");
+        }
+    }
+
+    // ============================================================================
+    // EXISTING OPERATIONS (refactored to use common methods where applicable)
+    // ============================================================================
+
+    @Operation(name = "$vital-signs-panel", idempotent = true)
+    public Bundle vitalSignsPanel(@IdParam IdType thePatientId) {
+        logger.info("Custom VitalSignsResourceProvider.vitalSignsPanel() called for patient: {}", thePatientId);
+        
+        try {
+            if (vitalSignsService != null) {
+                return vitalSignsService.generateVitalSignsPanel(thePatientId.getIdPart());
+            }
+            throw new UnsupportedOperationException("Vital Signs service not available");
+        } catch (Exception e) {
+            logger.error("Error in vital signs panel for patient {}: ", thePatientId, e);
+            // Return empty bundle instead of throwing exception
+            Bundle errorBundle = new Bundle();
+            errorBundle.setType(Bundle.BundleType.COLLECTION);
+            errorBundle.setTotal(0);
+            return errorBundle;
+        }
+    }
+
+    @Operation(name = "$vital-signs-trend", idempotent = true)
+    public Bundle vitalSignsTrend(
+            @IdParam IdType thePatientId,
+            @OperationParam(name = "code") TokenParam code,
+            @OperationParam(name = "start-date") DateParam startDate,
+            @OperationParam(name = "end-date") DateParam endDate) {
+
+        logger.info("Custom VitalSignsResourceProvider.vitalSignsTrend() called for patient: {}", thePatientId);
+        
+        try {
+            if (vitalSignsService != null) {
+                return vitalSignsService.getVitalSignsTrend(
+                        thePatientId.getIdPart(),
+                        code,
+                        startDate != null ? startDate.getValue() : null,
+                        endDate != null ? endDate.getValue() : null);
+            }
+            throw new UnsupportedOperationException("Vital Signs service not available");
+        } catch (Exception e) {
+            logger.error("Error in vital signs trend for patient {}: ", thePatientId, e);
+            // Return empty bundle instead of throwing exception
+            Bundle errorBundle = new Bundle();
+            errorBundle.setType(Bundle.BundleType.COLLECTION);
+            errorBundle.setTotal(0);
+            return errorBundle;
+        }
+    }
+
+    @Operation(name = "$latest-vital-signs", idempotent = true)
+    public Bundle latestVitalSigns(
+            @IdParam IdType thePatientId,
+            @OperationParam(name = "period") NumberParam periodHours) {
+
+        logger.info("Custom VitalSignsResourceProvider.latestVitalSigns() called for patient: {}", thePatientId);
+        
+        try {
+            if (vitalSignsService != null) {
+                return vitalSignsService.getLatestVitalSigns(
+                        thePatientId.getIdPart(),
+                        periodHours != null ? periodHours.getValue().intValue() : 24);
+            }
+            throw new UnsupportedOperationException("Vital Signs service not available");
+        } catch (Exception e) {
+            logger.error("Error in latest vital signs for patient {}: ", thePatientId, e);
+            // Return empty bundle instead of throwing exception
+            Bundle errorBundle = new Bundle();
+            errorBundle.setType(Bundle.BundleType.COLLECTION);
+            errorBundle.setTotal(0);
+            return errorBundle;
+        }
+    }
+
+    @Operation(name = "$vital-signs-summary", idempotent = true)
+    public Bundle vitalSignsSummary(
+            @IdParam IdType thePatientId,
+            @OperationParam(name = "encounter") ReferenceParam encounter) {
+
+        logger.info("Custom VitalSignsResourceProvider.vitalSignsSummary() called for patient: {}", thePatientId);
+        
+        try {
+            if (vitalSignsService != null) {
+                return vitalSignsService.getVitalSignsSummary(
+                        thePatientId.getIdPart(),
+                        encounter != null ? encounter.getValue() : null);
+            }
+            throw new UnsupportedOperationException("Vital Signs service not available");
+        } catch (Exception e) {
+            logger.error("Error in vital signs summary for patient {}: ", thePatientId, e);
+            // Return empty bundle instead of throwing exception
+            Bundle errorBundle = new Bundle();
+            errorBundle.setType(Bundle.BundleType.COLLECTION);
+            errorBundle.setTotal(0);
+            return errorBundle;
+        }
+    }
+
+    @Search
+    public List<Observation> search(
+            @OptionalParam(name = Observation.SP_SUBJECT) ReferenceParam theSubject,
+            @OptionalParam(name = Observation.SP_PATIENT) ReferenceParam thePatient,
+            @OptionalParam(name = Observation.SP_CODE) TokenParam theCode,
+            @OptionalParam(name = Observation.SP_DATE) DateRangeParam theDate,
+            @OptionalParam(name = Observation.SP_STATUS) TokenParam theStatus,
+            @OptionalParam(name = Observation.SP_ENCOUNTER) ReferenceParam theEncounter,
+            @OptionalParam(name = "_count") NumberParam theCount) {
+
+        logger.info("CUSTOM VitalSignsResourceProvider.search() called");
+
+        // Always filter for vital signs category
+        if (vitalSignsService != null) {
+            return vitalSignsService.searchVitalSigns(theSubject, thePatient, theCode,
+                    theDate, theStatus, theEncounter, theCount);
+        }
+
+        // Otherwise, fall back to default JPA search with vital signs filter
+        return searchByParameters(
+                buildSearchParams(theSubject, thePatient, theCode, theDate, theStatus, theEncounter, theCount));
+    }
+
+    // ============================================================================
+    // COMMON RESPONSE METHODS
+    // ============================================================================
+
+    /**
+     * Common method to set response headers and send successful JSON response
+     */
+    private void sendSuccessResponse(HttpServletResponse response, String jsonContent) {
+        try {
+            setCommonResponseHeaders(response);
+            response.setStatus(HttpServletResponse.SC_OK);
+            
+            response.getWriter().write(jsonContent);
+            response.getWriter().flush();
+            response.getWriter().close();
+        } catch (IOException e) {
+            logger.error("Error writing success response", e);
+        }
+    }
+
+    /**
+     * Common method to set response headers and send error response
+     */
+    private void sendErrorResponse(HttpServletResponse response, int statusCode, String errorMessage) {
+        try {
+            if (!response.isCommitted()) {
+                setCommonResponseHeaders(response);
+                response.setStatus(statusCode);
+                
+                String errorJson = String.format("{\"error\":\"%s\"}", errorMessage);
+                response.getWriter().write(errorJson);
+                response.getWriter().flush();
+                response.getWriter().close();
+            }
+        } catch (IOException e) {
+            logger.error("Error writing error response", e);
+        }
+    }
+
+    /**
+     * Common method to set standard response headers
+     */
+    private void setCommonResponseHeaders(HttpServletResponse response) {
+        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+        response.setCharacterEncoding("UTF-8");
+        response.setHeader("Cache-Control", "no-cache");
+    }
+
+    /**
+     * Common method to build bundle response from vital signs list (mapped format)
+     */
+    private String buildVitalSignsBundleResponse(List<Observation> vitalSigns, String bundleType, String patientValue) {
+        return buildVitalSignsBundleResponse(vitalSigns, bundleType, patientValue, null, null);
+    }
+
+    /**
+     * Common method to build bundle response with additional metadata (mapped format)
+     */
+    private String buildVitalSignsBundleResponse(List<Observation> vitalSigns, String bundleType, String patientValue, 
+            String additionalKey, String additionalValue) {
+        try {
             StringBuilder jsonResponse = new StringBuilder();
-            jsonResponse.append("{")
-                .append("\"resourceType\":\"Bundle\",")
-                .append("\"type\":\"searchset\",")
-                .append("\"total\":").append(vitalSigns.size()).append(",")
-                .append("\"patient\":\"").append(thePatient.getValue()).append("\",")
-                .append("\"entry\":[");
+            jsonResponse.append("{\"resourceType\":\"Bundle\",\"type\":\"").append(bundleType).append("\",\"total\":")
+                    .append(vitalSigns.size());
+
+            // Add patient info if provided
+            if (patientValue != null && !patientValue.isEmpty()) {
+                jsonResponse.append(",\"patient\":\"").append(patientValue).append("\"");
+            }
+
+            // Add additional metadata if provided
+            if (additionalKey != null && additionalValue != null) {
+                jsonResponse.append(",\"").append(additionalKey).append("\":\"").append(additionalValue).append("\"");
+            }
+
+            jsonResponse.append(",\"entry\":[");
+
+            // Add all vital signs (mapped format)
+            for (int i = 0; i < vitalSigns.size(); i++) {
+                if (i > 0) {
+                    jsonResponse.append(",");
+                }
+                VitalSignsDto mappedVitalSign = vitalSignsMapper.mapToDTO(vitalSigns.get(i));
+                String vitalSignJson = objectMapper.writeValueAsString(mappedVitalSign);
+                jsonResponse.append("{\"resource\":")
+                        .append(vitalSignJson)
+                        .append("}");
+            }
+            jsonResponse.append("]}");
+
+            return jsonResponse.toString();
+        } catch (Exception e) {
+            logger.error("Error building vital signs bundle response", e);
+            return "{\"error\":\"Error building response\"}";
+        }
+    }
+
+    /**
+     * Specialized method to build latest vital signs response
+     */
+    private String buildLatestVitalSignsResponse(List<Observation> vitalSigns, String patientId, int periodHours) {
+        try {
+            StringBuilder jsonResponse = new StringBuilder();
+            jsonResponse.append("{\"resourceType\":\"Bundle\",\"type\":\"searchset\",\"total\":")
+                    .append(vitalSigns.size())
+                    .append(",\"patient\":\"Patient/").append(patientId).append("\"")
+                    .append(",\"period\":").append(periodHours)
+                    .append(",\"category\":\"latest-vital-signs\"")
+                    .append(",\"entry\":[");
 
             for (int i = 0; i < vitalSigns.size(); i++) {
                 if (i > 0) {
@@ -400,23 +613,26 @@ public class VitalSignsResourceProvider extends BaseJpaResourceProvider<Observat
                 }
                 VitalSignsDto mappedVitalSign = vitalSignsMapper.mapToDTO(vitalSigns.get(i));
                 String vitalSignJson = objectMapper.writeValueAsString(mappedVitalSign);
-                jsonResponse.append("{\"resource\":").append(vitalSignJson).append("}");
+                jsonResponse.append("{\"resource\":")
+                        .append(vitalSignJson)
+                        .append("}");
             }
             jsonResponse.append("]}");
 
-            writeSuccessResponse(theResponse, jsonResponse.toString());
-            
-            logger.info("Mapped patient vital signs response sent, {} vital signs found for patient {}",
-                    vitalSigns.size(), thePatient.getValue());
-
+            return jsonResponse.toString();
         } catch (Exception e) {
-            logger.error("Error in get patient vital signs mapped: ", e);
-            writeErrorResponse(theResponse, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, 
-                "Internal server error");
+            logger.error("Error building latest vital signs response", e);
+            return "{\"error\":\"Error building response\"}";
         }
     }
 
-    // Helper method to check if observation is vital sign
+    // ============================================================================
+    // HELPER METHODS
+    // ============================================================================
+
+    /**
+     * Helper method to check if observation is vital sign
+     */
     private boolean isVitalSign(Observation observation) {
         if (observation == null || observation.getCategory() == null) {
             return false;
@@ -427,7 +643,9 @@ public class VitalSignsResourceProvider extends BaseJpaResourceProvider<Observat
                     .anyMatch(coding -> "vital-signs".equals(coding.getCode())));
     }
 
-    // Helper method to build date range
+    /**
+     * Helper method to build date range
+     */
     private DateRangeParam buildDateRange(NumberParam periodHours, DateParam startDate, DateParam endDate) {
         DateRangeParam dateRange = null;
         
@@ -461,44 +679,6 @@ public class VitalSignsResourceProvider extends BaseJpaResourceProvider<Observat
         }
         
         return dateRange;
-    }
-
-    // Helper methods for response handling
-    private void writeSuccessResponse(HttpServletResponse response, String jsonContent) {
-        try {
-            response.setStatus(HttpServletResponse.SC_OK);
-            response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-            response.setCharacterEncoding("UTF-8");
-            response.setHeader("Cache-Control", "no-cache");
-            
-            try (PrintWriter writer = response.getWriter()) {
-                writer.write(jsonContent);
-                writer.flush();
-            }
-        } catch (IOException e) {
-            logger.error("Error writing success response", e);
-        }
-    }
-
-    private void writeErrorResponse(HttpServletResponse response, int status, String message) {
-        try {
-            if (!response.isCommitted()) {
-                response.setStatus(status);
-                response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-                response.setCharacterEncoding("UTF-8");
-                
-                String errorJson = String.format(
-                    "{\"resourceType\":\"OperationOutcome\",\"issue\":[{\"severity\":\"error\",\"code\":\"processing\",\"diagnostics\":\"%s\"}]}", 
-                    message);
-                
-                try (PrintWriter writer = response.getWriter()) {
-                    writer.write(errorJson);
-                    writer.flush();
-                }
-            }
-        } catch (IOException e) {
-            logger.error("Error writing error response", e);
-        }
     }
 
     private void enrichVitalSignForEHR(Observation vitalSign) {

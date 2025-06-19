@@ -171,11 +171,7 @@ public class MedicationResourceProvider extends BaseJpaResourceProvider<Medicati
 			Medication medication = medicationService.getMedicationById(theId.getIdPart());
 
 			if (medication == null) {
-				theResponse.setStatus(HttpServletResponse.SC_NOT_FOUND);
-				theResponse.setContentType(MediaType.APPLICATION_JSON_VALUE);
-				theResponse.getWriter().write("{\"error\":\"Medication not found\"}");
-				theResponse.getWriter().flush();
-				theResponse.getWriter().close();
+				sendErrorResponse(theResponse, HttpServletResponse.SC_NOT_FOUND, "Medication not found");
 				return;
 			}
 
@@ -183,31 +179,12 @@ public class MedicationResourceProvider extends BaseJpaResourceProvider<Medicati
 			MedicationDto mappedMedication = medicationMapper.mapToDTO(medication);
 			String jsonResponse = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(mappedMedication);
 
-			// Set response headers and status
-			theResponse.setStatus(HttpServletResponse.SC_OK);
-			theResponse.setContentType(MediaType.APPLICATION_JSON_VALUE);
-			theResponse.setCharacterEncoding("UTF-8");
-			theResponse.setHeader("Cache-Control", "no-cache");
-
-			// Write response
-			theResponse.getWriter().write(jsonResponse);
-			theResponse.getWriter().flush();
-			theResponse.getWriter().close();
-
+			sendSuccessResponse(theResponse, jsonResponse);
 			logger.info("Mapped medication response sent for ID: {}", theId);
 
 		} catch (Exception e) {
 			logger.error("Error getting mapped medication {}: ", theId, e);
-			try {
-				if (!theResponse.isCommitted()) {
-					theResponse.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-					theResponse.setContentType(MediaType.APPLICATION_JSON_VALUE);
-					theResponse.getWriter().write("{\"error\":\"Internal server error\"}");
-					theResponse.getWriter().flush();
-				}
-			} catch (IOException ioException) {
-				logger.error("Error writing error response", ioException);
-			}
+			sendErrorResponse(theResponse, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Internal server error");
 		}
 	}
 
@@ -235,141 +212,67 @@ public class MedicationResourceProvider extends BaseJpaResourceProvider<Medicati
 			List<Medication> medications = medicationService.searchMedications(
 					theManufacturer, theIngredient, theCode, theIdentifier, theForm, theStatus, theCount);
 
-			// Map all medications to custom format
-			StringBuilder jsonResponse = new StringBuilder();
-			jsonResponse.append("{\"resourceType\":\"Bundle\",\"type\":\"searchset\",\"total\":")
-					.append(medications.size())
-					.append(",\"entry\":[");
-
-			for (int i = 0; i < medications.size(); i++) {
-				if (i > 0) {
-					jsonResponse.append(",");
-				}
-				MedicationDto mappedMedication = medicationMapper.mapToDTO(medications.get(i));
-				String medicationJson = objectMapper.writeValueAsString(mappedMedication);
-				jsonResponse.append("{\"resource\":")
-						.append(medicationJson)
-						.append("}");
-			}
-			jsonResponse.append("]}");
-
-			// Set response headers and status
-			theResponse.setStatus(HttpServletResponse.SC_OK);
-			theResponse.setContentType(MediaType.APPLICATION_JSON_VALUE);
-			theResponse.setCharacterEncoding("UTF-8");
-			theResponse.setHeader("Cache-Control", "no-cache");
-
-			// Write response
-			theResponse.getWriter().write(jsonResponse.toString());
-			theResponse.getWriter().flush();
-			theResponse.getWriter().close();
-
+			// Build bundle response
+			String jsonResponse = buildMedicationBundleResponse(medications, "searchset", null);
+			
+			sendSuccessResponse(theResponse, jsonResponse);
 			logger.info("Mapped medications search response sent, {} medications found", medications.size());
 
 		} catch (Exception e) {
 			logger.error("Error in search mapped medications: ", e);
-			try {
-				if (!theResponse.isCommitted()) {
-					theResponse.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-					theResponse.setContentType(MediaType.APPLICATION_JSON_VALUE);
-					theResponse.getWriter().write("{\"error\":\"Internal server error\"}");
-					theResponse.getWriter().flush();
-				}
-			} catch (IOException ioException) {
-				logger.error("Error writing error response", ioException);
-			}
+			sendErrorResponse(theResponse, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Internal server error");
 		}
 	}
 
 	/**
- * Custom operation to get patient medications in mapped format
- * Usage: GET /Medication/$patient-mapped?patient=Patient/123&category=prescription&start-date=2023-01-01
- */
-@Operation(name = "$patient-mapped", idempotent = true, type = Medication.class)
-public void getPatientMappedMedications(
-		@OperationParam(name = "patient") ReferenceParam thePatient,
-		@OperationParam(name = "category") TokenParam theCategory,
-		@OperationParam(name = "code") TokenParam theCode,
-		@OperationParam(name = "start-date") DateParam theStartDate,
-		@OperationParam(name = "end-date") DateParam theEndDate,
-		@OperationParam(name = "_count") NumberParam theCount,
-		HttpServletRequest theRequest,
-		HttpServletResponse theResponse,
-		RequestDetails theRequestDetails) {
+	 * Custom operation to get patient medications in mapped format
+	 * Usage: GET /Medication/$patient-mapped?patient=Patient/123&category=prescription&start-date=2023-01-01
+	 */
+	@Operation(name = "$patient-mapped", idempotent = true, type = Medication.class)
+	public void getPatientMappedMedications(
+			@OperationParam(name = "patient") ReferenceParam thePatient,
+			@OperationParam(name = "category") TokenParam theCategory,
+			@OperationParam(name = "code") TokenParam theCode,
+			@OperationParam(name = "start-date") DateParam theStartDate,
+			@OperationParam(name = "end-date") DateParam theEndDate,
+			@OperationParam(name = "_count") NumberParam theCount,
+			HttpServletRequest theRequest,
+			HttpServletResponse theResponse,
+			RequestDetails theRequestDetails) {
 
-	logger.info("Custom MedicationResourceProvider.getPatientMappedMedications() called for patient: {}",
-			thePatient != null ? thePatient.getValue() : "null");
+		logger.info("Custom MedicationResourceProvider.getPatientMappedMedications() called for patient: {}",
+				thePatient != null ? thePatient.getValue() : "null");
 
-	try {
-		if (thePatient == null) {
-			theResponse.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-			theResponse.setContentType(MediaType.APPLICATION_JSON_VALUE);
-			theResponse.getWriter().write("{\"error\":\"Patient parameter is required\"}");
-			theResponse.getWriter().flush();
-			theResponse.getWriter().close();
-			return;
-		}
-
-		// Use search instead of non-existent service method
-		// Search for medications (this will get all medications, not patient-specific)
-		List<Medication> medications = searchByParameters(
-				buildSearchParams(null, null, theCode, null, null, null, theCount));
-
-		// Apply count limit if specified
-		if (theCount != null && theCount.getValue() != null) {
-			int limit = theCount.getValue().intValue();
-			if (medications.size() > limit) {
-				medications = medications.subList(0, limit);
-			}
-		}
-
-		// Map all medications to custom format (same as $search-mapped)
-		StringBuilder jsonResponse = new StringBuilder();
-		jsonResponse.append("{\"resourceType\":\"Bundle\",\"type\":\"searchset\",\"total\":")
-				.append(medications.size())
-				.append(",\"patient\":\"").append(thePatient.getValue()).append("\"")
-				.append(",\"entry\":[");
-
-		for (int i = 0; i < medications.size(); i++) {
-			if (i > 0) {
-				jsonResponse.append(",");
-			}
-			MedicationDto mappedMedication = medicationMapper.mapToDTO(medications.get(i));
-			String medicationJson = objectMapper.writeValueAsString(mappedMedication);
-			jsonResponse.append("{\"resource\":")
-					.append(medicationJson)
-					.append("}");
-		}
-		jsonResponse.append("]}");
-
-		// Set response headers and status (same as $search-mapped)
-		theResponse.setStatus(HttpServletResponse.SC_OK);
-		theResponse.setContentType(MediaType.APPLICATION_JSON_VALUE);
-		theResponse.setCharacterEncoding("UTF-8");
-		theResponse.setHeader("Cache-Control", "no-cache");
-
-		// Write response
-		theResponse.getWriter().write(jsonResponse.toString());
-		theResponse.getWriter().flush();
-		theResponse.getWriter().close();
-
-		logger.info("Mapped patient medications response sent, {} medications found for patient {}",
-				medications.size(), thePatient.getValue());
-
-	} catch (Exception e) {
-		logger.error("Error in get patient mapped medications: ", e);
 		try {
-			if (!theResponse.isCommitted()) {
-				theResponse.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-				theResponse.setContentType(MediaType.APPLICATION_JSON_VALUE);
-				theResponse.getWriter().write("{\"error\":\"Internal server error\"}");
-				theResponse.getWriter().flush();
+			if (thePatient == null) {
+				sendErrorResponse(theResponse, HttpServletResponse.SC_BAD_REQUEST, "Patient parameter is required");
+				return;
 			}
-		} catch (IOException ioException) {
-			logger.error("Error writing error response", ioException);
+
+			// Use search for medications (simplified for demo - in real implementation you'd filter by patient)
+			List<Medication> medications = searchByParameters(
+					buildSearchParams(null, null, theCode, null, null, null, theCount));
+
+			// Apply count limit if specified
+			if (theCount != null && theCount.getValue() != null) {
+				int limit = theCount.getValue().intValue();
+				if (medications.size() > limit) {
+					medications = medications.subList(0, limit);
+				}
+			}
+
+			// Build bundle response with patient info
+			String jsonResponse = buildMedicationBundleResponse(medications, "searchset", thePatient.getValue());
+			
+			sendSuccessResponse(theResponse, jsonResponse);
+			logger.info("Mapped patient medications response sent, {} medications found for patient {}",
+					medications.size(), thePatient.getValue());
+
+		} catch (Exception e) {
+			logger.error("Error in get patient mapped medications: ", e);
+			sendErrorResponse(theResponse, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Internal server error");
 		}
 	}
-}
 
 	/**
 	 * Custom operation to get medication summary in mapped format
@@ -389,206 +292,105 @@ public void getPatientMappedMedications(
 			Medication medication = medicationService.getMedicationById(theMedicationId.getIdPart());
 
 			if (medication == null) {
-				theResponse.setStatus(HttpServletResponse.SC_NOT_FOUND);
-				theResponse.setContentType(MediaType.APPLICATION_JSON_VALUE);
-				theResponse.getWriter().write("{\"error\":\"Medication not found\"}");
-				theResponse.getWriter().flush();
-				theResponse.getWriter().close();
+				sendErrorResponse(theResponse, HttpServletResponse.SC_NOT_FOUND, "Medication not found");
 				return;
 			}
 
-			// Map medication to custom format
-			MedicationDto mappedMedication = medicationMapper.mapToDTO(medication);
-
-			// Create summary response
-			StringBuilder jsonResponse = new StringBuilder();
-			jsonResponse.append("{\"resourceType\":\"Bundle\",\"type\":\"collection\",\"total\":1")
-					.append(",\"medicationId\":\"").append(theMedicationId.getIdPart()).append("\"")
-					.append(",\"entry\":[");
-
-			String medicationJson = objectMapper.writeValueAsString(mappedMedication);
-			jsonResponse.append("{\"resource\":")
-					.append(medicationJson)
-					.append("}");
-
-			jsonResponse.append("]}");
-
-			// Set response headers and status
-			theResponse.setStatus(HttpServletResponse.SC_OK);
-			theResponse.setContentType(MediaType.APPLICATION_JSON_VALUE);
-			theResponse.setCharacterEncoding("UTF-8");
-			theResponse.setHeader("Cache-Control", "no-cache");
-
-			// Write response
-			theResponse.getWriter().write(jsonResponse.toString());
-			theResponse.getWriter().flush();
-			theResponse.getWriter().close();
-
+			// Create single medication list for bundle response
+			List<Medication> medications = List.of(medication);
+			
+			// Build collection bundle response
+			String jsonResponse = buildMedicationBundleResponse(medications, "collection", null, 
+					"medicationId", theMedicationId.getIdPart());
+			
+			sendSuccessResponse(theResponse, jsonResponse);
 			logger.info("Medication summary response sent for ID: {}", theMedicationId);
 
 		} catch (Exception e) {
 			logger.error("Error in medication summary: ", e);
-			try {
-				if (!theResponse.isCommitted()) {
-					theResponse.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-					theResponse.setContentType(MediaType.APPLICATION_JSON_VALUE);
-					theResponse.getWriter().write("{\"error\":\"Internal server error\"}");
-					theResponse.getWriter().flush();
-				}
-			} catch (IOException ioException) {
-				logger.error("Error writing error response", ioException);
-			}
+			sendErrorResponse(theResponse, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Internal server error");
 		}
 	}
 
 	/**
- * Custom operation to get patient medications (standard FHIR Bundle)
- * Usage: GET /Medication/$patient-medications?patient=Patient/123&category=prescription
- */
-@Operation(name = "$patient-medications", idempotent = true, type = Medication.class)
-public void patientMedications(
-		@OperationParam(name = "patient") ReferenceParam thePatient,
-		@OperationParam(name = "category") TokenParam category,
-		@OperationParam(name = "start-date") DateParam startDate,
-		@OperationParam(name = "end-date") DateParam endDate,
-		HttpServletRequest theRequest,
-		HttpServletResponse theResponse,
-		RequestDetails theRequestDetails) {
+	 * Custom operation to get patient medications (standard FHIR Bundle)
+	 * Usage: GET /Medication/$patient-medications?patient=Patient/123&category=prescription
+	 */
+	@Operation(name = "$patient-medications", idempotent = true, type = Medication.class)
+	public void patientMedications(
+			@OperationParam(name = "patient") ReferenceParam thePatient,
+			@OperationParam(name = "category") TokenParam theCategory,
+			@OperationParam(name = "start-date") DateParam theStartDate,
+			@OperationParam(name = "end-date") DateParam theEndDate,
+			HttpServletRequest theRequest,
+			HttpServletResponse theResponse,
+			RequestDetails theRequestDetails) {
 
-	logger.info("Patient medications operation called for patient: {}", 
-			thePatient != null ? thePatient.getValue() : "null");
+		logger.info("Patient medications operation called for patient: {}", 
+				thePatient != null ? thePatient.getValue() : "null");
 
-	try {
-		if (thePatient == null) {
-			theResponse.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-			theResponse.setContentType(MediaType.APPLICATION_JSON_VALUE);
-			theResponse.getWriter().write("{\"error\":\"Patient parameter is required\"}");
-			theResponse.getWriter().flush();
-			theResponse.getWriter().close();
-			return;
-		}
-
-		// Search for medications using existing search functionality
-		List<Medication> medications = searchByParameters(
-				buildSearchParams(null, null, null, null, null, null, null));
-
-		// Create FHIR Bundle
-		Bundle medicationsBundle = new Bundle();
-		medicationsBundle.setType(Bundle.BundleType.SEARCHSET);
-		medicationsBundle.setTotal(medications.size());
-
-		// Add medications to bundle
-		for (Medication medication : medications) {
-			Bundle.BundleEntryComponent entry = new Bundle.BundleEntryComponent();
-			entry.setResource(medication);
-			entry.setFullUrl("Medication/" + medication.getId());
-			medicationsBundle.addEntry(entry);
-		}
-
-		// Convert bundle to JSON
-		ca.uhn.fhir.context.FhirContext ctx = ca.uhn.fhir.context.FhirContext.forR4();
-		String jsonResponse = ctx.newJsonParser().setPrettyPrint(true).encodeResourceToString(medicationsBundle);
-
-		theResponse.setStatus(HttpServletResponse.SC_OK);
-		theResponse.setContentType("application/fhir+json");
-		theResponse.setCharacterEncoding("UTF-8");
-		theResponse.setHeader("Cache-Control", "no-cache");
-
-		theResponse.getWriter().write(jsonResponse);
-		theResponse.getWriter().flush();
-		theResponse.getWriter().close();
-
-		logger.info("Patient medications response sent for patient: {}", thePatient.getValue());
-
-	} catch (Exception e) {
-		logger.error("Error in patient medications operation: ", e);
 		try {
-			if (!theResponse.isCommitted()) {
-				theResponse.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-				theResponse.setContentType(MediaType.APPLICATION_JSON_VALUE);
-				theResponse.getWriter().write("{\"error\":\"Failed to get patient medications: " + e.getMessage() + "\"}");
-				theResponse.getWriter().flush();
+			if (thePatient == null) {
+				sendErrorResponse(theResponse, HttpServletResponse.SC_BAD_REQUEST, "Patient parameter is required");
+				return;
 			}
-		} catch (IOException ioException) {
-			logger.error("Error writing error response", ioException);
+
+			// Search for medications using existing search functionality
+			List<Medication> medications = searchByParameters(
+					buildSearchParams(null, null, null, null, null, null, null));
+
+			// Build FHIR Bundle response
+			String jsonResponse = buildFhirBundleResponse(medications, thePatient.getValue());
+			
+			sendFhirResponse(theResponse, jsonResponse);
+			logger.info("Patient medications response sent for patient: {}", thePatient.getValue());
+
+		} catch (Exception e) {
+			logger.error("Error in patient medications operation: ", e);
+			sendErrorResponse(theResponse, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, 
+					"Failed to get patient medications: " + e.getMessage());
 		}
 	}
-}
 
 	/**
- * Custom operation to get medication interactions in mapped format
- * Usage: GET /Medication/$medication-interactions?patient=Patient/123&medication=aspirin&period=30
- */
-@Operation(name = "$medication-interactions", idempotent = true, type = Medication.class)
-public void medicationInteractions(
-		@OperationParam(name = "patient", min = 1) ReferenceParam thePatient,
-		@OperationParam(name = "medication") TokenParam theMedication,
-		@OperationParam(name = "period") NumberParam thePeriodDays,
-		@OperationParam(name = "_count") NumberParam theCount,
-		HttpServletRequest theRequest,
-		HttpServletResponse theResponse,
-		RequestDetails theRequestDetails) {
+	 * Custom operation to get medication interactions in mapped format
+	 * Usage: GET /Medication/$medication-interactions?patient=Patient/123&medication=aspirin&period=30
+	 */
+	@Operation(name = "$medication-interactions", idempotent = true, type = Medication.class)
+	public void medicationInteractions(
+			@OperationParam(name = "patient", min = 1) ReferenceParam thePatient,
+			@OperationParam(name = "medication") TokenParam theMedication,
+			@OperationParam(name = "period") NumberParam thePeriodDays,
+			@OperationParam(name = "_count") NumberParam theCount,
+			HttpServletRequest theRequest,
+			HttpServletResponse theResponse,
+			RequestDetails theRequestDetails) {
 
-	logger.info("Custom MedicationResourceProvider.medicationInteractions() called");
+		logger.info("Custom MedicationResourceProvider.medicationInteractions() called");
 
-	try {
-		if (thePatient == null) {
-			theResponse.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-			theResponse.setContentType(MediaType.APPLICATION_JSON_VALUE);
-			theResponse.getWriter().write("{\"error\":\"Patient parameter is required\"}");
-			theResponse.getWriter().flush();
-			theResponse.getWriter().close();
-			return;
-		}
-
-		int periodDays = thePeriodDays != null ? thePeriodDays.getValue().intValue() : 30;
-
-		// Search for medications (simplified - get all medications for demo)
-		List<Medication> medications = searchByParameters(
-				buildSearchParams(null, null, theMedication, null, null, null, theCount));
-
-		// Create interactions bundle (simplified - showing medications as potential interactions)
-		Bundle interactionsBundle = new Bundle();
-		interactionsBundle.setType(Bundle.BundleType.SEARCHSET);
-		interactionsBundle.setTotal(medications.size());
-
-		// Add medications to bundle as potential interactions
-		for (Medication medication : medications) {
-			Bundle.BundleEntryComponent entry = new Bundle.BundleEntryComponent();
-			entry.setResource(medication);
-			entry.setFullUrl("Medication/" + medication.getId());
-			interactionsBundle.addEntry(entry);
-		}
-
-		// Convert bundle to JSON
-		ca.uhn.fhir.context.FhirContext ctx = ca.uhn.fhir.context.FhirContext.forR4();
-		String jsonResponse = ctx.newJsonParser().setPrettyPrint(true).encodeResourceToString(interactionsBundle);
-
-		theResponse.setStatus(HttpServletResponse.SC_OK);
-		theResponse.setContentType("application/fhir+json");
-		theResponse.setCharacterEncoding("UTF-8");
-		theResponse.setHeader("Cache-Control", "no-cache");
-
-		theResponse.getWriter().write(jsonResponse);
-		theResponse.getWriter().flush();
-		theResponse.getWriter().close();
-
-		logger.info("Medication interactions response sent for patient: {}", thePatient.getValue());
-
-	} catch (Exception e) {
-		logger.error("Error in medication interactions: ", e);
 		try {
-			if (!theResponse.isCommitted()) {
-				theResponse.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-				theResponse.setContentType(MediaType.APPLICATION_JSON_VALUE);
-				theResponse.getWriter().write("{\"error\":\"Internal server error\"}");
-				theResponse.getWriter().flush();
+			if (thePatient == null) {
+				sendErrorResponse(theResponse, HttpServletResponse.SC_BAD_REQUEST, "Patient parameter is required");
+				return;
 			}
-		} catch (IOException ioException) {
-			logger.error("Error writing error response", ioException);
+
+			int periodDays = thePeriodDays != null ? thePeriodDays.getValue().intValue() : 30;
+
+			// Search for medications (simplified - get all medications for demo)
+			List<Medication> medications = searchByParameters(
+					buildSearchParams(null, null, theMedication, null, null, null, theCount));
+
+			// Build FHIR Bundle response for interactions
+			String jsonResponse = buildMedicationInteractionsResponse(medications, thePatient.getValue(), periodDays);
+			
+			sendFhirResponse(theResponse, jsonResponse);
+			logger.info("Medication interactions response sent for patient: {}", thePatient.getValue());
+
+		} catch (Exception e) {
+			logger.error("Error in medication interactions: ", e);
+			sendErrorResponse(theResponse, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Internal server error");
 		}
 	}
-}
 
 	@Search
 	public List<Medication> search(
@@ -610,6 +412,171 @@ public void medicationInteractions(
 		return searchByParameters(
 				buildSearchParams(theManufacturer, theIngredient, theCode, theIdentifier, theForm, theStatus,
 						theCount));
+	}
+
+	/**
+	 * Common method to set response headers and send successful JSON response
+	 */
+	private void sendSuccessResponse(HttpServletResponse response, String jsonContent) {
+		try {
+			setCommonResponseHeaders(response);
+			response.setStatus(HttpServletResponse.SC_OK);
+			
+			response.getWriter().write(jsonContent);
+			response.getWriter().flush();
+			response.getWriter().close();
+		} catch (IOException e) {
+			logger.error("Error writing success response", e);
+		}
+	}
+
+	/**
+	 * Common method to set response headers and send FHIR JSON response
+	 */
+	private void sendFhirResponse(HttpServletResponse response, String fhirContent) {
+		try {
+			response.setContentType("application/fhir+json");
+			response.setCharacterEncoding("UTF-8");
+			response.setHeader("Cache-Control", "no-cache");
+			response.setStatus(HttpServletResponse.SC_OK);
+			
+			response.getWriter().write(fhirContent);
+			response.getWriter().flush();
+			response.getWriter().close();
+		} catch (IOException e) {
+			logger.error("Error writing FHIR response", e);
+		}
+	}
+
+	/**
+	 * Common method to set response headers and send error response
+	 */
+	private void sendErrorResponse(HttpServletResponse response, int statusCode, String errorMessage) {
+		try {
+			if (!response.isCommitted()) {
+				setCommonResponseHeaders(response);
+				response.setStatus(statusCode);
+				
+				String errorJson = String.format("{\"error\":\"%s\"}", errorMessage);
+				response.getWriter().write(errorJson);
+				response.getWriter().flush();
+				response.getWriter().close();
+			}
+		} catch (IOException e) {
+			logger.error("Error writing error response", e);
+		}
+	}
+
+	/**
+	 * Common method to set standard response headers
+	 */
+	private void setCommonResponseHeaders(HttpServletResponse response) {
+		response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+		response.setCharacterEncoding("UTF-8");
+		response.setHeader("Cache-Control", "no-cache");
+	}
+
+	/**
+	 * Common method to build bundle response from medications list (mapped format)
+	 */
+	private String buildMedicationBundleResponse(List<Medication> medications, String bundleType, String patientValue) {
+		return buildMedicationBundleResponse(medications, bundleType, patientValue, null, null);
+	}
+
+	/**
+	 * Common method to build bundle response with additional metadata (mapped format)
+	 */
+	private String buildMedicationBundleResponse(List<Medication> medications, String bundleType, String patientValue, 
+			String additionalKey, String additionalValue) {
+		try {
+			StringBuilder jsonResponse = new StringBuilder();
+			jsonResponse.append("{\"resourceType\":\"Bundle\",\"type\":\"").append(bundleType).append("\",\"total\":")
+					.append(medications.size());
+
+			// Add patient info if provided
+			if (patientValue != null && !patientValue.isEmpty()) {
+				jsonResponse.append(",\"patient\":\"").append(patientValue).append("\"");
+			}
+
+			// Add additional metadata if provided
+			if (additionalKey != null && additionalValue != null) {
+				jsonResponse.append(",\"").append(additionalKey).append("\":\"").append(additionalValue).append("\"");
+			}
+
+			jsonResponse.append(",\"entry\":[");
+
+			// Add all medications (mapped format)
+			for (int i = 0; i < medications.size(); i++) {
+				if (i > 0) {
+					jsonResponse.append(",");
+				}
+				MedicationDto mappedMedication = medicationMapper.mapToDTO(medications.get(i));
+				String medicationJson = objectMapper.writeValueAsString(mappedMedication);
+				jsonResponse.append("{\"resource\":")
+						.append(medicationJson)
+						.append("}");
+			}
+			jsonResponse.append("]}");
+
+			return jsonResponse.toString();
+		} catch (Exception e) {
+			logger.error("Error building medication bundle response", e);
+			return "{\"error\":\"Error building response\"}";
+		}
+	}
+
+	/**
+	 * Common method to build FHIR Bundle response (standard FHIR format)
+	 */
+	private String buildFhirBundleResponse(List<Medication> medications, String patientValue) {
+		try {
+			// Create FHIR Bundle
+			Bundle medicationsBundle = new Bundle();
+			medicationsBundle.setType(Bundle.BundleType.SEARCHSET);
+			medicationsBundle.setTotal(medications.size());
+
+			// Add medications to bundle
+			for (Medication medication : medications) {
+				Bundle.BundleEntryComponent entry = new Bundle.BundleEntryComponent();
+				entry.setResource(medication);
+				entry.setFullUrl("Medication/" + medication.getId());
+				medicationsBundle.addEntry(entry);
+			}
+
+			// Convert bundle to JSON
+			ca.uhn.fhir.context.FhirContext ctx = ca.uhn.fhir.context.FhirContext.forR4();
+			return ctx.newJsonParser().setPrettyPrint(true).encodeResourceToString(medicationsBundle);
+		} catch (Exception e) {
+			logger.error("Error building FHIR bundle response", e);
+			return "{\"error\":\"Error building FHIR response\"}";
+		}
+	}
+
+	/**
+	 * Specialized method to build medication interactions FHIR response
+	 */
+	private String buildMedicationInteractionsResponse(List<Medication> medications, String patientValue, int periodDays) {
+		try {
+			// Create interactions bundle (simplified - showing medications as potential interactions)
+			Bundle interactionsBundle = new Bundle();
+			interactionsBundle.setType(Bundle.BundleType.SEARCHSET);
+			interactionsBundle.setTotal(medications.size());
+
+			// Add medications to bundle as potential interactions
+			for (Medication medication : medications) {
+				Bundle.BundleEntryComponent entry = new Bundle.BundleEntryComponent();
+				entry.setResource(medication);
+				entry.setFullUrl("Medication/" + medication.getId());
+				interactionsBundle.addEntry(entry);
+			}
+
+			// Convert bundle to JSON
+			ca.uhn.fhir.context.FhirContext ctx = ca.uhn.fhir.context.FhirContext.forR4();
+			return ctx.newJsonParser().setPrettyPrint(true).encodeResourceToString(interactionsBundle);
+		} catch (Exception e) {
+			logger.error("Error building medication interactions response", e);
+			return "{\"error\":\"Error building interactions response\"}";
+		}
 	}
 
 	private void enrichMedicationForEHR(Medication medication) {

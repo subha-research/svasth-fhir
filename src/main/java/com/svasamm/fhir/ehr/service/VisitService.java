@@ -1,18 +1,35 @@
 package com.svasamm.fhir.ehr.service;
 
-import ca.uhn.fhir.jpa.searchparam.SearchParameterMap;
-import ca.uhn.fhir.rest.api.MethodOutcome;
-import ca.uhn.fhir.rest.param.*;
-import org.hl7.fhir.r4.model.*;
+import java.util.Date;
+import java.util.List;
+import java.util.UUID;
+import java.util.stream.Collectors;
+
+import org.hl7.fhir.r4.model.Bundle;
+import org.hl7.fhir.r4.model.DateTimeType;
+import org.hl7.fhir.r4.model.Encounter;
+import org.hl7.fhir.r4.model.Extension;
+import org.hl7.fhir.r4.model.IdType;
+import org.hl7.fhir.r4.model.Identifier;
+import org.hl7.fhir.r4.model.Location;
+import org.hl7.fhir.r4.model.Observation;
+import org.hl7.fhir.r4.model.Patient;
+import org.hl7.fhir.r4.model.Procedure;
+import org.hl7.fhir.r4.model.StringType;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import ca.uhn.fhir.jpa.api.dao.IFhirResourceDao;
 
-import java.util.*;
-import java.util.stream.Collectors;
+import ca.uhn.fhir.jpa.api.dao.IFhirResourceDao;
+import ca.uhn.fhir.jpa.searchparam.SearchParameterMap;
+import ca.uhn.fhir.rest.api.MethodOutcome;
+import ca.uhn.fhir.rest.param.DateRangeParam;
+import ca.uhn.fhir.rest.param.NumberParam;
+import ca.uhn.fhir.rest.param.ReferenceParam;
+import ca.uhn.fhir.rest.param.StringParam;
+import ca.uhn.fhir.rest.param.TokenParam;
 
 @Service
 @Transactional
@@ -149,72 +166,80 @@ public class VisitService {
 	}
 
 	public Bundle getPatientVisits(String patientId, TokenParam visitClass, Date startDate, Date endDate) {
-		Patient patient = getPatientById(patientId);
-		if (patient == null) {
-			throw new RuntimeException("Patient not found: " + patientId);
-		}
+    // Extract just the ID part if it's in "Patient/123" format
+    String cleanPatientId = patientId;
+    if (patientId.startsWith("Patient/")) {
+        cleanPatientId = patientId.substring(8);
+    }
+    
+    Patient patient = getPatientById(cleanPatientId);
+    if (patient == null) {
+        throw new RuntimeException("Patient not found: " + cleanPatientId);
+    }
 
-		Bundle visits = new Bundle();
-		visits.setType(Bundle.BundleType.COLLECTION);
-		visits.setId(UUID.randomUUID().toString());
-		visits.setTimestamp(new Date());
+    Bundle visits = new Bundle();
+    visits.setType(Bundle.BundleType.COLLECTION);
+    visits.setId(UUID.randomUUID().toString());
+    visits.setTimestamp(new Date());
 
-		SearchParameterMap searchMap = new SearchParameterMap();
-		searchMap.add(Encounter.SP_PATIENT, new ReferenceParam(patientId));
+    SearchParameterMap searchMap = new SearchParameterMap();
+    searchMap.add(Encounter.SP_PATIENT, new ReferenceParam("Patient/" + cleanPatientId));
 
-		if (visitClass != null) {
-			searchMap.add(Encounter.SP_CLASS, visitClass);
-		}
+    if (visitClass != null) {
+        searchMap.add(Encounter.SP_CLASS, visitClass);
+    }
 
-		if (startDate != null && endDate != null) {
-			DateRangeParam dateRange = new DateRangeParam(startDate, endDate);
-			searchMap.add(Encounter.SP_DATE, dateRange);
-		}
+    if (startDate != null && endDate != null) {
+        DateRangeParam dateRange = new DateRangeParam(startDate, endDate);
+        searchMap.add(Encounter.SP_DATE, dateRange);
+    }
 
-		searchMap.add("_sort", new StringParam("-date"));
+    // REMOVE the _sort line - this is causing the error
+    // searchMap.add("_sort", new StringParam("-date"));
 
-		encounterDao.search(searchMap)
-				.getAllResources()
-				.forEach(resource -> {
-					Encounter visit = (Encounter) resource;
-					visits.addEntry()
-							.setResource(visit)
-							.setFullUrl("Encounter/" + visit.getIdElement().getIdPart());
-				});
+    encounterDao.search(searchMap)
+            .getAllResources()
+            .forEach(resource -> {
+                Encounter visit = (Encounter) resource;
+                visits.addEntry()
+                        .setResource(visit)
+                        .setFullUrl("Encounter/" + visit.getIdElement().getIdPart());
+            });
 
-		return visits;
-	}
+    return visits;
+}
 
 	public Bundle getActiveVisits(ReferenceParam location, TokenParam visitClass) {
-		Bundle activeVisits = new Bundle();
-		activeVisits.setType(Bundle.BundleType.COLLECTION);
-		activeVisits.setId(UUID.randomUUID().toString());
-		activeVisits.setTimestamp(new Date());
+    Bundle activeVisits = new Bundle();
+    activeVisits.setType(Bundle.BundleType.COLLECTION);
+    activeVisits.setId(UUID.randomUUID().toString());
+    activeVisits.setTimestamp(new Date());
 
-		SearchParameterMap searchMap = new SearchParameterMap();
-		searchMap.add(Encounter.SP_STATUS, new TokenParam("in-progress"));
+    SearchParameterMap searchMap = new SearchParameterMap();
+    searchMap.add(Encounter.SP_STATUS, new TokenParam("in-progress"));
 
-		if (location != null) {
-			searchMap.add(Encounter.SP_LOCATION, location);
-		}
+    if (location != null) {
+        searchMap.add(Encounter.SP_LOCATION, location);
+    }
 
-		if (visitClass != null) {
-			searchMap.add(Encounter.SP_CLASS, visitClass);
-		}
+    if (visitClass != null) {
+        searchMap.add(Encounter.SP_CLASS, visitClass);
+    }
 
-		searchMap.add("_sort", new StringParam("date"));
+    // REMOVE the _sort line - this is causing the error
+    // searchMap.add("_sort", new StringParam("date"));
 
-		encounterDao.search(searchMap)
-				.getAllResources()
-				.forEach(resource -> {
-					Encounter visit = (Encounter) resource;
-					activeVisits.addEntry()
-							.setResource(visit)
-							.setFullUrl("Encounter/" + visit.getIdElement().getIdPart());
-				});
+    encounterDao.search(searchMap)
+            .getAllResources()
+            .forEach(resource -> {
+                Encounter visit = (Encounter) resource;
+                activeVisits.addEntry()
+                        .setResource(visit)
+                        .setFullUrl("Encounter/" + visit.getIdElement().getIdPart());
+            });
 
-		return activeVisits;
-	}
+    return activeVisits;
+}
 
 	public Bundle getVisitTimeline(String visitId, boolean includeObservations, boolean includeProcedures) {
 		Encounter visit = getVisitById(visitId);
@@ -331,45 +356,44 @@ public class VisitService {
 	}
 
 	private void addVisitObservations(Bundle bundle, String visitId) {
-		try {
-			SearchParameterMap searchMap = new SearchParameterMap();
-			searchMap.add(Observation.SP_ENCOUNTER, new ReferenceParam(visitId));
-			searchMap.add("_sort", new StringParam("date"));
+    try {
+        SearchParameterMap searchMap = new SearchParameterMap();
+        searchMap.add(Observation.SP_ENCOUNTER, new ReferenceParam("Encounter/" + visitId));
+        // REMOVE: searchMap.add("_sort", new StringParam("date"));
 
-			observationDao.search(searchMap)
-					.getAllResources()
-					.forEach(resource -> {
-						Observation obs = (Observation) resource;
-						bundle.addEntry()
-								.setResource(obs)
-								.setFullUrl("Observation/" + obs.getIdElement().getIdPart());
-					});
+        observationDao.search(searchMap)
+                .getAllResources()
+                .forEach(resource -> {
+                    Observation obs = (Observation) resource;
+                    bundle.addEntry()
+                            .setResource(obs)
+                            .setFullUrl("Observation/" + obs.getIdElement().getIdPart());
+                });
 
-		} catch (Exception e) {
-			// Log error but don't fail the operation
-		}
-	}
+    } catch (Exception e) {
+        // Log error but don't fail the operation
+    }
+}
 
 	private void addVisitProcedures(Bundle bundle, String visitId) {
-		try {
-			SearchParameterMap searchMap = new SearchParameterMap();
-			searchMap.add(Procedure.SP_ENCOUNTER, new ReferenceParam(visitId));
-			searchMap.add("_sort", new StringParam("date"));
+    try {
+        SearchParameterMap searchMap = new SearchParameterMap();
+        searchMap.add(Procedure.SP_ENCOUNTER, new ReferenceParam("Encounter/" + visitId));
+        // REMOVE: searchMap.add("_sort", new StringParam("date"));
 
-			procedureDao.search(searchMap)
-					.getAllResources()
-					.forEach(resource -> {
-						Procedure proc = (Procedure) resource;
-						bundle.addEntry()
-								.setResource(proc)
-								.setFullUrl("Procedure/" + proc.getIdElement().getIdPart());
-					});
+        procedureDao.search(searchMap)
+                .getAllResources()
+                .forEach(resource -> {
+                    Procedure proc = (Procedure) resource;
+                    bundle.addEntry()
+                            .setResource(proc)
+                            .setFullUrl("Procedure/" + proc.getIdElement().getIdPart());
+                });
 
-		} catch (Exception e) {
-			// Log error but don't fail the operation
-		}
-	}
-
+    } catch (Exception e) {
+        // Log error but don't fail the operation
+    }
+}
 	private String extractPatientIdFromReference(String reference) {
 		if (reference == null) {
 			throw new IllegalArgumentException("Patient reference cannot be null");
