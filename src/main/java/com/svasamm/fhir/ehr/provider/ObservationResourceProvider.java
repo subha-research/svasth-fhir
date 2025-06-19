@@ -45,7 +45,6 @@ import ca.uhn.fhir.rest.server.exceptions.ResourceNotFoundException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
-
 /**
  * Custom Observation Resource Provider that extends HAPI's JPA provider
  * This preserves all JPA functionality (versioning, locking, etc.) while adding
@@ -170,10 +169,7 @@ public class ObservationResourceProvider extends BaseJpaResourceProvider<Observa
 			Observation observation = observationService.getObservationById(theId.getIdPart());
 
 			if (observation == null) {
-				theResponse.setStatus(HttpServletResponse.SC_NOT_FOUND);
-				theResponse.setContentType(MediaType.APPLICATION_JSON_VALUE);
-				theResponse.getWriter().write("{\"error\":\"Observation not found\"}");
-				theResponse.getWriter().flush();
+				sendErrorResponse(theResponse, HttpServletResponse.SC_NOT_FOUND, "Observation not found");
 				return;
 			}
 
@@ -181,38 +177,18 @@ public class ObservationResourceProvider extends BaseJpaResourceProvider<Observa
 			ObservationDto mappedObservation = observationMapper.mapToDTO(observation);
 			String jsonResponse = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(mappedObservation);
 
-			// Set response headers and status first
-			theResponse.setStatus(HttpServletResponse.SC_OK);
-			theResponse.setContentType(MediaType.APPLICATION_JSON_VALUE);
-			theResponse.setCharacterEncoding("UTF-8");
-			theResponse.setHeader("Cache-Control", "no-cache");
-
-			// Write response and flush immediately
-			theResponse.getWriter().write(jsonResponse);
-			theResponse.getWriter().flush();
-			theResponse.getWriter().close();
-
+			sendSuccessResponse(theResponse, jsonResponse);
 			logger.info("Mapped observation response sent for ID: {}", theId);
 
 		} catch (Exception e) {
 			logger.error("Error getting mapped observation {}: ", theId, e);
-			try {
-				if (!theResponse.isCommitted()) {
-					theResponse.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-					theResponse.setContentType(MediaType.APPLICATION_JSON_VALUE);
-					theResponse.getWriter().write("{\"error\":\"Internal server error\"}");
-					theResponse.getWriter().flush();
-				}
-			} catch (IOException ioException) {
-				logger.error("Error writing error response", ioException);
-			}
+			sendErrorResponse(theResponse, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Internal server error");
 		}
 	}
 
 	/**
 	 * Custom operation to search observations and return them in mapped format
-	 * Usage: GET
-	 * /Observation/$search-mapped?subject=Patient/123&code=8867-4&category=vital-signs
+	 * Usage: GET /Observation/$search-mapped?subject=Patient/123&code=8867-4&category=vital-signs
 	 */
 	@Operation(name = "$search-mapped", idempotent = true, type = Observation.class)
 	public void searchMappedObservations(
@@ -234,56 +210,21 @@ public class ObservationResourceProvider extends BaseJpaResourceProvider<Observa
 			List<Observation> observations = observationService.searchObservations(
 					theSubject, thePatient, theCode, theCategory, theDate, theStatus, theCount);
 
-			// Map all observations to custom format
-			StringBuilder jsonResponse = new StringBuilder();
-			jsonResponse.append("{\"resourceType\":\"Bundle\",\"type\":\"searchset\",\"total\":")
-					.append(observations.size())
-					.append(",\"entry\":[");
-
-			for (int i = 0; i < observations.size(); i++) {
-				if (i > 0) {
-					jsonResponse.append(",");
-				}
-				ObservationDto mappedObservation = observationMapper.mapToDTO(observations.get(i));
-				String observationJson = objectMapper.writeValueAsString(mappedObservation);
-				jsonResponse.append("{\"resource\":")
-						.append(observationJson)
-						.append("}");
-			}
-			jsonResponse.append("]}");
-
-			// Set response headers and status first
-			theResponse.setStatus(HttpServletResponse.SC_OK);
-			theResponse.setContentType(MediaType.APPLICATION_JSON_VALUE);
-			theResponse.setCharacterEncoding("UTF-8");
-			theResponse.setHeader("Cache-Control", "no-cache");
-
-			// Write response and flush immediately
-			theResponse.getWriter().write(jsonResponse.toString());
-			theResponse.getWriter().flush();
-			theResponse.getWriter().close();
-
+			// Build bundle response
+			String jsonResponse = buildBundleResponse(observations, "searchset", null);
+			
+			sendSuccessResponse(theResponse, jsonResponse);
 			logger.info("Mapped observations search response sent, {} observations found", observations.size());
 
 		} catch (Exception e) {
 			logger.error("Error in search mapped observations: ", e);
-			try {
-				if (!theResponse.isCommitted()) {
-					theResponse.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-					theResponse.setContentType(MediaType.APPLICATION_JSON_VALUE);
-					theResponse.getWriter().write("{\"error\":\"Internal server error\"}");
-					theResponse.getWriter().flush();
-				}
-			} catch (IOException ioException) {
-				logger.error("Error writing error response", ioException);
-			}
+			sendErrorResponse(theResponse, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Internal server error");
 		}
 	}
 
 	/**
 	 * Custom operation to get patient's observations in mapped format
-	 * Usage: GET
-	 * /Observation/$patient-mapped?patient=Patient/123&category=vital-signs&start-date=2023-01-01
+	 * Usage: GET /Observation/$patient-mapped?patient=Patient/123&category=vital-signs&start-date=2023-01-01
 	 */
 	@Operation(name = "$patient-mapped", idempotent = true, type = Observation.class)
 	public void getPatientMappedObservations(
@@ -301,75 +242,162 @@ public class ObservationResourceProvider extends BaseJpaResourceProvider<Observa
 				thePatient.getValue());
 
 		try {
-			// Create search parameters for patient observations
+			// Create search parameters
+			DateRangeParam dateRange = buildDateRange(theStartDate, theEndDate);
 			ReferenceParam subjectParam = new ReferenceParam(thePatient.getValue());
-			DateRangeParam dateRange = null;
-
-			if (theStartDate != null || theEndDate != null) {
-				dateRange = new DateRangeParam();
-				if (theStartDate != null) {
-					DateParam lowerBound = new DateParam();
-					lowerBound.setPrefix(ca.uhn.fhir.rest.param.ParamPrefixEnum.GREATERTHAN_OR_EQUALS);
-					lowerBound.setValue(theStartDate.getValue());
-					dateRange.setLowerBound(lowerBound);
-				}
-				if (theEndDate != null) {
-					DateParam upperBound = new DateParam();
-					upperBound.setPrefix(ca.uhn.fhir.rest.param.ParamPrefixEnum.LESSTHAN_OR_EQUALS);
-					upperBound.setValue(theEndDate.getValue());
-					dateRange.setUpperBound(upperBound);
-				}
-			}
 
 			// Perform search using service
 			List<Observation> observations = observationService.searchObservations(
 					subjectParam, thePatient, theCode, theCategory, dateRange, null, theCount);
 
-			// Map all observations to custom format
-			StringBuilder jsonResponse = new StringBuilder();
-			jsonResponse.append("{\"resourceType\":\"Bundle\",\"type\":\"searchset\",\"total\":")
-					.append(observations.size())
-					.append(",\"patient\":\"").append(thePatient.getValue()).append("\"")
-					.append(",\"entry\":[");
-
-			for (int i = 0; i < observations.size(); i++) {
-				if (i > 0) {
-					jsonResponse.append(",");
-				}
-				ObservationDto mappedObservation = observationMapper.mapToDTO(observations.get(i));
-				String observationJson = objectMapper.writeValueAsString(mappedObservation);
-				jsonResponse.append("{\"resource\":")
-						.append(observationJson)
-						.append("}");
-			}
-			jsonResponse.append("]}");
-
-			// Set response headers and status first
-			theResponse.setStatus(HttpServletResponse.SC_OK);
-			theResponse.setContentType(MediaType.APPLICATION_JSON_VALUE);
-			theResponse.setCharacterEncoding("UTF-8");
-			theResponse.setHeader("Cache-Control", "no-cache");
-
-			// Write response and flush immediately
-			theResponse.getWriter().write(jsonResponse.toString());
-			theResponse.getWriter().flush();
-			theResponse.getWriter().close();
-
+			// Build bundle response with patient info
+			String jsonResponse = buildBundleResponse(observations, "searchset", thePatient.getValue());
+			
+			sendSuccessResponse(theResponse, jsonResponse);
 			logger.info("Mapped patient observations response sent, {} observations found for patient {}",
 					observations.size(), thePatient.getValue());
 
 		} catch (Exception e) {
 			logger.error("Error in get patient mapped observations: ", e);
-			try {
-				if (!theResponse.isCommitted()) {
-					theResponse.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-					theResponse.setContentType(MediaType.APPLICATION_JSON_VALUE);
-					theResponse.getWriter().write("{\"error\":\"Internal server error\"}");
-					theResponse.getWriter().flush();
-				}
-			} catch (IOException ioException) {
-				logger.error("Error writing error response", ioException);
+			sendErrorResponse(theResponse, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Internal server error");
+		}
+	}
+
+	/**
+	 * Custom operation to get observation summary in mapped format
+	 * Usage: GET /Observation/{id}/$observation-summary
+	 */
+	@Operation(name = "$observation-summary", idempotent = true, type = Observation.class)
+	public void observationSummary(
+			@IdParam IdType theObservationId,
+			HttpServletRequest theRequest,
+			HttpServletResponse theResponse,
+			RequestDetails theRequestDetails) {
+
+		logger.info("Custom ObservationResourceProvider.observationSummary() called for ID: {}", theObservationId);
+
+		try {
+			// Get the observation using service
+			Observation observation = observationService.getObservationById(theObservationId.getIdPart());
+
+			if (observation == null) {
+				sendErrorResponse(theResponse, HttpServletResponse.SC_NOT_FOUND, "Observation not found");
+				return;
 			}
+
+			// Create single observation list for bundle response
+			List<Observation> observations = List.of(observation);
+			
+			// Build collection bundle response
+			String jsonResponse = buildBundleResponse(observations, "collection", null, 
+					"observationId", theObservationId.getIdPart());
+			
+			sendSuccessResponse(theResponse, jsonResponse);
+			logger.info("Observation summary response sent for ID: {}", theObservationId);
+
+		} catch (Exception e) {
+			logger.error("Error in observation summary: ", e);
+			sendErrorResponse(theResponse, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Internal server error");
+		}
+	}
+
+	/**
+	 * Custom operation to get patient observations and return them in mapped format
+	 * Usage: GET /Observation/$patient-observations?patient=Patient/123&category=vital-signs&start-date=2023-01-01
+	 */
+	@Operation(name = "$patient-observations", idempotent = true, type = Observation.class)
+	public void patientObservations(
+			@OperationParam(name = "patient") ReferenceParam thePatient,
+			@OperationParam(name = "category") TokenParam theCategory,
+			@OperationParam(name = "code") TokenParam theCode,
+			@OperationParam(name = "start-date") DateParam theStartDate,
+			@OperationParam(name = "end-date") DateParam theEndDate,
+			@OperationParam(name = "status") TokenParam theStatus,
+			@OperationParam(name = "_count") NumberParam theCount,
+			HttpServletRequest theRequest,
+			HttpServletResponse theResponse,
+			RequestDetails theRequestDetails) {
+
+		logger.info("Custom ObservationResourceProvider.patientObservations() called");
+
+		try {
+			// Create search parameters
+			DateRangeParam dateRange = buildDateRange(theStartDate, theEndDate);
+			ReferenceParam subjectParam = thePatient != null ? new ReferenceParam(thePatient.getValue()) : null;
+
+			// Perform search using service
+			List<Observation> observations = observationService.searchObservations(
+					subjectParam, thePatient, theCode, theCategory, dateRange, theStatus, theCount);
+
+			// Build bundle response with patient info
+			String patientValue = thePatient != null ? thePatient.getValue() : "";
+			String jsonResponse = buildBundleResponse(observations, "searchset", patientValue);
+			
+			sendSuccessResponse(theResponse, jsonResponse);
+			logger.info("Patient observations response sent, {} observations found for patient {}", 
+					observations.size(), patientValue);
+
+		} catch (Exception e) {
+			logger.error("Error in patient observations: ", e);
+			sendErrorResponse(theResponse, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Internal server error");
+		}
+	}
+
+	/**
+	 * Custom operation to get vital signs trend in mapped format
+	 * Usage: GET /Observation/$vital-signs-trend?patient=Patient/123&code=8867-4&period=30
+	 */
+	@Operation(name = "$vital-signs-trend", idempotent = true, type = Observation.class)
+	public void vitalSignsTrend(
+			@OperationParam(name = "patient", min = 1) ReferenceParam thePatient,
+			@OperationParam(name = "code") TokenParam theCode,
+			@OperationParam(name = "period") NumberParam thePeriodDays,
+			@OperationParam(name = "category") TokenParam theCategory,
+			@OperationParam(name = "_count") NumberParam theCount,
+			HttpServletRequest theRequest,
+			HttpServletResponse theResponse,
+			RequestDetails theRequestDetails) {
+
+		logger.info("Custom ObservationResourceProvider.vitalSignsTrend() called");
+
+		try {
+			if (thePatient == null) {
+				sendErrorResponse(theResponse, HttpServletResponse.SC_BAD_REQUEST, "Patient parameter is required");
+				return;
+			}
+
+			// Set default period to 30 days if not provided
+			int periodDays = thePeriodDays != null ? thePeriodDays.getValue().intValue() : 30;
+
+			// Create date range for the period (last X days)
+			DateRangeParam dateRange = buildPeriodDateRange(periodDays);
+
+			// Set category to vital-signs if not provided
+			TokenParam category = theCategory;
+			if (category == null) {
+				category = new TokenParam();
+				category.setSystem("http://terminology.hl7.org/CodeSystem/observation-category");
+				category.setValue("vital-signs");
+			}
+
+			// Create subject parameter
+			ReferenceParam subjectParam = new ReferenceParam(thePatient.getValue());
+
+			// Perform search using service
+			List<Observation> observations = observationService.searchObservations(
+					subjectParam, thePatient, theCode, category, dateRange, null, theCount);
+
+			// Build bundle response with additional metadata
+			String codeValue = theCode != null ? theCode.getValue() : "all-vital-signs";
+			String jsonResponse = buildVitalSignsTrendResponse(observations, thePatient.getValue(), periodDays, codeValue);
+			
+			sendSuccessResponse(theResponse, jsonResponse);
+			logger.info("Vital signs trend response sent, {} observations found for patient {} over {} days", 
+					observations.size(), thePatient.getValue(), periodDays);
+
+		} catch (Exception e) {
+			logger.error("Error in vital signs trend: ", e);
+			sendErrorResponse(theResponse, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Internal server error");
 		}
 	}
 
@@ -394,204 +422,168 @@ public class ObservationResourceProvider extends BaseJpaResourceProvider<Observa
 				buildSearchParams(theSubject, thePatient, theCode, theCategory, theDate, theStatus, theCount));
 	}
 
-/**
- * Custom operation to get observation summary in mapped format
- * Usage: GET /Observation/{id}/$observation-summary
- */
-@Operation(name = "$observation-summary", idempotent = true, type = Observation.class)
-public void observationSummary(
-		@IdParam IdType theObservationId,
-		HttpServletRequest theRequest,
-		HttpServletResponse theResponse,
-		RequestDetails theRequestDetails) {
+	// ============================================================================
+	// COMMON RESPONSE METHODS
+	// ============================================================================
 
-	logger.info("Custom ObservationResourceProvider.observationSummary() called for ID: {}", theObservationId);
-
-	try {
-		// Get the observation using service (similar to your other operations)
-		Observation observation = observationService.getObservationById(theObservationId.getIdPart());
-
-		if (observation == null) {
-			// Handle not found case (same pattern as $search-mapped error handling)
-			theResponse.setStatus(HttpServletResponse.SC_NOT_FOUND);
-			theResponse.setContentType(MediaType.APPLICATION_JSON_VALUE);
-			theResponse.getWriter().write("{\"error\":\"Observation not found\"}");
-			theResponse.getWriter().flush();
-			theResponse.getWriter().close();
-			return;
-		}
-
-		// Map observation to custom format (same as your other operations)
-		ObservationDto mappedObservation = observationMapper.mapToDTO(observation);
-
-		// Create summary response in same format as $search-mapped
-		StringBuilder jsonResponse = new StringBuilder();
-		jsonResponse.append("{\"resourceType\":\"Bundle\",\"type\":\"collection\",\"total\":1")
-				.append(",\"observationId\":\"").append(theObservationId.getIdPart()).append("\"")
-				.append(",\"entry\":[");
-
-		// Add the mapped observation
-		String observationJson = objectMapper.writeValueAsString(mappedObservation);
-		jsonResponse.append("{\"resource\":")
-				.append(observationJson)
-				.append("}");
-
-		jsonResponse.append("]}");
-
-		// Set response headers and status first (exactly same as $search-mapped)
-		theResponse.setStatus(HttpServletResponse.SC_OK);
-		theResponse.setContentType(MediaType.APPLICATION_JSON_VALUE);
-		theResponse.setCharacterEncoding("UTF-8");
-		theResponse.setHeader("Cache-Control", "no-cache");
-
-		// Write response and flush immediately (exactly same as $search-mapped)
-		theResponse.getWriter().write(jsonResponse.toString());
-		theResponse.getWriter().flush();
-		theResponse.getWriter().close();
-
-		logger.info("Observation summary response sent for ID: {}", theObservationId);
-
-	} catch (Exception e) {
-		logger.error("Error in observation summary: ", e);
-		try {
-			if (!theResponse.isCommitted()) {
-				theResponse.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-				theResponse.setContentType(MediaType.APPLICATION_JSON_VALUE);
-				theResponse.getWriter().write("{\"error\":\"Internal server error\"}");
-				theResponse.getWriter().flush();
-			}
-		} catch (IOException ioException) {
-			logger.error("Error writing error response", ioException);
-		}
-	}
-}
-/**
- * Custom operation to get patient observations and return them in mapped format
- * Usage: GET
- * /Observation/$patient-observations?patient=Patient/123&category=vital-signs&start-date=2023-01-01
- */
-@Operation(name = "$patient-observations", idempotent = true, type = Observation.class)
-public void patientObservations(
-		@OperationParam(name = "patient") ReferenceParam thePatient,
-		@OperationParam(name = "category") TokenParam theCategory,
-		@OperationParam(name = "code") TokenParam theCode,
-		@OperationParam(name = "start-date") DateParam theStartDate,
-		@OperationParam(name = "end-date") DateParam theEndDate,
-		@OperationParam(name = "status") TokenParam theStatus,
-		@OperationParam(name = "_count") NumberParam theCount,
-		HttpServletRequest theRequest,
-		HttpServletResponse theResponse,
-		RequestDetails theRequestDetails) {
-
-	logger.info("Custom ObservationResourceProvider.patientObservations() called");
-
-	try {
-		// Create search parameters for patient observations (same as $patient-mapped logic)
-		ReferenceParam subjectParam = null;
-		DateRangeParam dateRange = null;
-
-		if (thePatient != null) {
-			subjectParam = new ReferenceParam(thePatient.getValue());
-		}
-
-		if (theStartDate != null || theEndDate != null) {
-			dateRange = new DateRangeParam();
-			if (theStartDate != null) {
-				DateParam lowerBound = new DateParam();
-				lowerBound.setPrefix(ca.uhn.fhir.rest.param.ParamPrefixEnum.GREATERTHAN_OR_EQUALS);
-				lowerBound.setValue(theStartDate.getValue());
-				dateRange.setLowerBound(lowerBound);
-			}
-			if (theEndDate != null) {
-				DateParam upperBound = new DateParam();
-				upperBound.setPrefix(ca.uhn.fhir.rest.param.ParamPrefixEnum.LESSTHAN_OR_EQUALS);
-				upperBound.setValue(theEndDate.getValue());
-				dateRange.setUpperBound(upperBound);
-			}
-		}
-
-		// Perform search using service (same as $search-mapped)
-		List<Observation> observations = observationService.searchObservations(
-				subjectParam, thePatient, theCode, theCategory, dateRange, theStatus, theCount);
-
-		// Map all observations to custom format (exactly same as $search-mapped)
-		StringBuilder jsonResponse = new StringBuilder();
-		jsonResponse.append("{\"resourceType\":\"Bundle\",\"type\":\"searchset\",\"total\":")
-				.append(observations.size())
-				.append(",\"patient\":\"").append(thePatient != null ? thePatient.getValue() : "").append("\"")
-				.append(",\"entry\":[");
-
-		for (int i = 0; i < observations.size(); i++) {
-			if (i > 0) {
-				jsonResponse.append(",");
-			}
-			ObservationDto mappedObservation = observationMapper.mapToDTO(observations.get(i));
-			String observationJson = objectMapper.writeValueAsString(mappedObservation);
-			jsonResponse.append("{\"resource\":")
-					.append(observationJson)
-					.append("}");
-		}
-		jsonResponse.append("]}");
-
-		// Set response headers and status first (exactly same as $search-mapped)
-		theResponse.setStatus(HttpServletResponse.SC_OK);
-		theResponse.setContentType(MediaType.APPLICATION_JSON_VALUE);
-		theResponse.setCharacterEncoding("UTF-8");
-		theResponse.setHeader("Cache-Control", "no-cache");
-
-		// Write response and flush immediately (exactly same as $search-mapped)
-		theResponse.getWriter().write(jsonResponse.toString());
-		theResponse.getWriter().flush();
-		theResponse.getWriter().close();
-
-		logger.info("Patient observations response sent, {} observations found for patient {}", 
-				observations.size(), thePatient != null ? thePatient.getValue() : "null");
-
-	} catch (Exception e) {
-		logger.error("Error in patient observations: ", e);
-		try {
-			if (!theResponse.isCommitted()) {
-				theResponse.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-				theResponse.setContentType(MediaType.APPLICATION_JSON_VALUE);
-				theResponse.getWriter().write("{\"error\":\"Internal server error\"}");
-				theResponse.getWriter().flush();
-			}
-		} catch (IOException ioException) {
-			logger.error("Error writing error response", ioException);
-		}
-	}
-}
 	/**
- * Custom operation to get vital signs trend in mapped format
- * Usage: GET /Observation/$vital-signs-trend?patient=Patient/123&code=8867-4&period=30
- */
-@Operation(name = "$vital-signs-trend", idempotent = true, type = Observation.class)
-public void vitalSignsTrend(
-		@OperationParam(name = "patient", min = 1) ReferenceParam thePatient,
-		@OperationParam(name = "code") TokenParam theCode,
-		@OperationParam(name = "period") NumberParam thePeriodDays,
-		@OperationParam(name = "category") TokenParam theCategory,
-		@OperationParam(name = "_count") NumberParam theCount,
-		HttpServletRequest theRequest,
-		HttpServletResponse theResponse,
-		RequestDetails theRequestDetails) {
+	 * Common method to set response headers and send successful JSON response
+	 */
+	private void sendSuccessResponse(HttpServletResponse response, String jsonContent) {
+		try {
+			setCommonResponseHeaders(response);
+			response.setStatus(HttpServletResponse.SC_OK);
+			
+			response.getWriter().write(jsonContent);
+			response.getWriter().flush();
+			response.getWriter().close();
+		} catch (IOException e) {
+			logger.error("Error writing success response", e);
+		}
+	}
 
-	logger.info("Custom ObservationResourceProvider.vitalSignsTrend() called");
+	/**
+	 * Common method to set response headers and send error response
+	 */
+	private void sendErrorResponse(HttpServletResponse response, int statusCode, String errorMessage) {
+		try {
+			if (!response.isCommitted()) {
+				setCommonResponseHeaders(response);
+				response.setStatus(statusCode);
+				
+				String errorJson = String.format("{\"error\":\"%s\"}", errorMessage);
+				response.getWriter().write(errorJson);
+				response.getWriter().flush();
+				response.getWriter().close();
+			}
+		} catch (IOException e) {
+			logger.error("Error writing error response", e);
+		}
+	}
 
-	try {
-		if (thePatient == null) {
-			theResponse.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-			theResponse.setContentType(MediaType.APPLICATION_JSON_VALUE);
-			theResponse.getWriter().write("{\"error\":\"Patient parameter is required\"}");
-			theResponse.getWriter().flush();
-			theResponse.getWriter().close();
-			return;
+	/**
+	 * Common method to set standard response headers
+	 */
+	private void setCommonResponseHeaders(HttpServletResponse response) {
+		response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+		response.setCharacterEncoding("UTF-8");
+		response.setHeader("Cache-Control", "no-cache");
+	}
+
+	/**
+	 * Common method to build bundle response from observations list
+	 */
+	private String buildBundleResponse(List<Observation> observations, String bundleType, String patientValue) {
+		return buildBundleResponse(observations, bundleType, patientValue, null, null);
+	}
+
+	/**
+	 * Common method to build bundle response with additional metadata
+	 */
+	private String buildBundleResponse(List<Observation> observations, String bundleType, String patientValue, 
+			String additionalKey, String additionalValue) {
+		try {
+			StringBuilder jsonResponse = new StringBuilder();
+			jsonResponse.append("{\"resourceType\":\"Bundle\",\"type\":\"").append(bundleType).append("\",\"total\":")
+					.append(observations.size());
+
+			// Add patient info if provided
+			if (patientValue != null && !patientValue.isEmpty()) {
+				jsonResponse.append(",\"patient\":\"").append(patientValue).append("\"");
+			}
+
+			// Add additional metadata if provided
+			if (additionalKey != null && additionalValue != null) {
+				jsonResponse.append(",\"").append(additionalKey).append("\":\"").append(additionalValue).append("\"");
+			}
+
+			jsonResponse.append(",\"entry\":[");
+
+			// Add all observations
+			for (int i = 0; i < observations.size(); i++) {
+				if (i > 0) {
+					jsonResponse.append(",");
+				}
+				ObservationDto mappedObservation = observationMapper.mapToDTO(observations.get(i));
+				String observationJson = objectMapper.writeValueAsString(mappedObservation);
+				jsonResponse.append("{\"resource\":")
+						.append(observationJson)
+						.append("}");
+			}
+			jsonResponse.append("]}");
+
+			return jsonResponse.toString();
+		} catch (Exception e) {
+			logger.error("Error building bundle response", e);
+			return "{\"error\":\"Error building response\"}";
+		}
+	}
+
+	/**
+	 * Specialized method to build vital signs trend response
+	 */
+	private String buildVitalSignsTrendResponse(List<Observation> observations, String patientValue, 
+			int periodDays, String codeValue) {
+		try {
+			StringBuilder jsonResponse = new StringBuilder();
+			jsonResponse.append("{\"resourceType\":\"Bundle\",\"type\":\"searchset\",\"total\":")
+					.append(observations.size())
+					.append(",\"patient\":\"").append(patientValue).append("\"")
+					.append(",\"period\":").append(periodDays)
+					.append(",\"code\":\"").append(codeValue).append("\"")
+					.append(",\"entry\":[");
+
+			for (int i = 0; i < observations.size(); i++) {
+				if (i > 0) {
+					jsonResponse.append(",");
+				}
+				ObservationDto mappedObservation = observationMapper.mapToDTO(observations.get(i));
+				String observationJson = objectMapper.writeValueAsString(mappedObservation);
+				jsonResponse.append("{\"resource\":")
+						.append(observationJson)
+						.append("}");
+			}
+			jsonResponse.append("]}");
+
+			return jsonResponse.toString();
+		} catch (Exception e) {
+			logger.error("Error building vital signs trend response", e);
+			return "{\"error\":\"Error building response\"}";
+		}
+	}
+
+	// ============================================================================
+	// HELPER METHODS
+	// ============================================================================
+
+	/**
+	 * Helper method to build date range from start and end dates
+	 */
+	private DateRangeParam buildDateRange(DateParam startDate, DateParam endDate) {
+		if (startDate == null && endDate == null) {
+			return null;
 		}
 
-		// Set default period to 30 days if not provided
-		int periodDays = thePeriodDays != null ? thePeriodDays.getValue().intValue() : 30;
+		DateRangeParam dateRange = new DateRangeParam();
+		if (startDate != null) {
+			DateParam lowerBound = new DateParam();
+			lowerBound.setPrefix(ca.uhn.fhir.rest.param.ParamPrefixEnum.GREATERTHAN_OR_EQUALS);
+			lowerBound.setValue(startDate.getValue());
+			dateRange.setLowerBound(lowerBound);
+		}
+		if (endDate != null) {
+			DateParam upperBound = new DateParam();
+			upperBound.setPrefix(ca.uhn.fhir.rest.param.ParamPrefixEnum.LESSTHAN_OR_EQUALS);
+			upperBound.setValue(endDate.getValue());
+			dateRange.setUpperBound(upperBound);
+		}
+		return dateRange;
+	}
 
-		// Create date range for the period (last X days)
+	/**
+	 * Helper method to build date range for a period (last X days)
+	 */
+	private DateRangeParam buildPeriodDateRange(int periodDays) {
 		DateRangeParam dateRange = new DateRangeParam();
 		
 		// Calculate start date (period days ago)
@@ -608,70 +600,9 @@ public void vitalSignsTrend(
 		endDate.setValue(new Date());
 		dateRange.setUpperBound(endDate);
 
-		// Set category to vital-signs if not provided
-		TokenParam category = theCategory;
-		if (category == null) {
-			category = new TokenParam();
-			category.setSystem("http://terminology.hl7.org/CodeSystem/observation-category");
-			category.setValue("vital-signs");
-		}
-
-		// Create subject parameter
-		ReferenceParam subjectParam = new ReferenceParam(thePatient.getValue());
-
-		// Perform search using service (same as $search-mapped)
-		List<Observation> observations = observationService.searchObservations(
-				subjectParam, thePatient, theCode, category, dateRange, null, theCount);
-
-		// Map all observations to custom format (exactly same as $search-mapped)
-		StringBuilder jsonResponse = new StringBuilder();
-		jsonResponse.append("{\"resourceType\":\"Bundle\",\"type\":\"searchset\",\"total\":")
-				.append(observations.size())
-				.append(",\"patient\":\"").append(thePatient.getValue()).append("\"")
-				.append(",\"period\":").append(periodDays)
-				.append(",\"code\":\"").append(theCode != null ? theCode.getValue() : "all-vital-signs").append("\"")
-				.append(",\"entry\":[");
-
-		for (int i = 0; i < observations.size(); i++) {
-			if (i > 0) {
-				jsonResponse.append(",");
-			}
-			ObservationDto mappedObservation = observationMapper.mapToDTO(observations.get(i));
-			String observationJson = objectMapper.writeValueAsString(mappedObservation);
-			jsonResponse.append("{\"resource\":")
-					.append(observationJson)
-					.append("}");
-		}
-		jsonResponse.append("]}");
-
-		// Set response headers and status first (exactly same as $search-mapped)
-		theResponse.setStatus(HttpServletResponse.SC_OK);
-		theResponse.setContentType(MediaType.APPLICATION_JSON_VALUE);
-		theResponse.setCharacterEncoding("UTF-8");
-		theResponse.setHeader("Cache-Control", "no-cache");
-
-		// Write response and flush immediately (exactly same as $search-mapped)
-		theResponse.getWriter().write(jsonResponse.toString());
-		theResponse.getWriter().flush();
-		theResponse.getWriter().close();
-
-		logger.info("Vital signs trend response sent, {} observations found for patient {} over {} days", 
-				observations.size(), thePatient.getValue(), periodDays);
-
-	} catch (Exception e) {
-		logger.error("Error in vital signs trend: ", e);
-		try {
-			if (!theResponse.isCommitted()) {
-				theResponse.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-				theResponse.setContentType(MediaType.APPLICATION_JSON_VALUE);
-				theResponse.getWriter().write("{\"error\":\"Internal server error\"}");
-				theResponse.getWriter().flush();
-			}
-		} catch (IOException ioException) {
-			logger.error("Error writing error response", ioException);
-		}
+		return dateRange;
 	}
-}
+
 	private void enrichObservationForEHR(Observation observation) {
 		// Set default status if not present
 		if (observation.getStatus() == null) {
