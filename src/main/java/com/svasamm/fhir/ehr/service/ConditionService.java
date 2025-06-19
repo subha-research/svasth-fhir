@@ -35,7 +35,7 @@ import ca.uhn.fhir.rest.param.TokenParam;
 
 @Service
 @Transactional
-@ConditionalOnClass(IFhirResourceDao.class)
+@ConditionalOnClass(Condition.class)
 @Profile("!test")
 
 public class ConditionService {
