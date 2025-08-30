@@ -44,14 +44,14 @@
     </repositories>
 
     <dependencyManagement>
-       <dependencies>
+        <dependencies>
 
             <dependency>
-               <groupId>org.glassfish.jaxb</groupId>
-               <artifactId>jaxb-runtime</artifactId>
-               <version>2.3.8</version>
-           </dependency>
-       </dependencies>
+                <groupId>org.glassfish.jaxb</groupId>
+                <artifactId>jaxb-runtime</artifactId>
+                <version>2.3.8</version>
+            </dependency>
+        </dependencies>
     </dependencyManagement>
 
     <dependencies>
@@ -61,8 +61,8 @@
             <scope>runtime</scope>
         </dependency>
         <dependency>
-          <groupId>com.microsoft.sqlserver</groupId>
-          <artifactId>mssql-jdbc</artifactId>
+            <groupId>com.microsoft.sqlserver</groupId>
+            <artifactId>mssql-jdbc</artifactId>
         </dependency>
 
         <!-- Needed for Email subscriptions -->
@@ -130,9 +130,9 @@
         </dependency>
         <!-- This dependency includes the CDS Hooks Server -->
         <dependency>
-          <groupId>ca.uhn.hapi.fhir</groupId>
-          <artifactId>hapi-fhir-server-cds-hooks</artifactId>
-          <version>${project.parent.version}</version>
+            <groupId>ca.uhn.hapi.fhir</groupId>
+            <artifactId>hapi-fhir-server-cds-hooks</artifactId>
+            <version>${project.parent.version}</version>
         </dependency>
         <!-- This dependency includes the OpenAPI Server -->
         <dependency>
@@ -168,7 +168,7 @@
         </dependency>
 
         <!-- HAPI-FHIR uses Logback for logging support. The logback library is included automatically by Maven as a part of the hapi-fhir-base dependency, but you also need to include a logging library. Logback
-            is used here, but log4j would also be fine. -->
+        is used here, but log4j would also be fine. -->
         <dependency>
             <groupId>ch.qos.logback</groupId>
             <artifactId>logback-classic</artifactId>
@@ -219,7 +219,7 @@
         </dependency>
 
         <!-- This example uses H2 embedded database. If you are using another database such as Mysql or Oracle, you may omit the following dependencies and replace them with an appropriate database client
-            dependency for your database platform. -->
+        dependency for your database platform. -->
         <dependency>
             <groupId>com.h2database</groupId>
             <artifactId>h2</artifactId>
@@ -608,13 +608,13 @@
 
     <profiles>
         <!-- Package the war for your preference. Use the boot profile if you prefer a single jar/war
-        that can be started with and embedded application server. Default is jetty as it is assumed
-        that the main users of this project already have an app server.
-        Different profiles are needed as packing it for spring boot, makes the resulting war undeployable
-        due to a class shading issue between tomcat and jetty.
-        (the error is 'java.util.ServiceConfigurationError: org.apache.juli.logging.Log: org.eclipse.jetty.apache.jsp.JuliLog not a subtype')
+       that can be started with and embedded application server. Default is jetty as it is assumed
+       that the main users of this project already have an app server.
+       Different profiles are needed as packing it for spring boot, makes the resulting war undeployable
+       due to a class shading issue between tomcat and jetty.
+       (the error is 'java.util.ServiceConfigurationError: org.apache.juli.logging.Log: org.eclipse.jetty.apache.jsp.JuliLog not a subtype')
 
-         -->
+        -->
 
         <!-- example of how to start the server using spring boot-->
         <!-- mvn clean package spring-boot:repackage -Pboot && java -jar target/ROOT.war -->
